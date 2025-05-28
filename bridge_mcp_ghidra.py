@@ -220,7 +220,12 @@ def set_function_prototype(function_address: str, prototype: str) -> str:
 @mcp.tool()
 def set_local_variable_type(function_address: str, variable_name: str, new_type: str) -> str:
     """
-    Set a local variable's type.
+    Set a local variable's type by its name.
+
+    Args:
+        function_address: Target address in hex format (e.g. "0x1400010a0")
+        variable_name: Name of variable to retype (e.g. "var_c")
+        new_type: Name of new type (e.g. "Point")
     """
     return safe_post("set_local_variable_type", {"function_address": function_address, "variable_name": variable_name, "new_type": new_type})
 
