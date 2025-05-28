@@ -292,6 +292,19 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: str = None) -> list
         params["filter"] = filter
     return safe_get("strings", params)
 
+@mcp.tool()
+def create_type_from_c_definition(c_definition: str) -> str:
+    """
+    Create a data type from its C definition string.
+    
+    Args:
+        c_definition: The C definition as a string (e.g., "struct Point { int x; int y; };")
+        
+    Returns:
+        Result of the type creation operation
+    """
+    return safe_post("create_type_from_c_definition", c_definition)
+
 def main():
     parser = argparse.ArgumentParser(description="MCP server for Ghidra")
     parser.add_argument("--ghidra-server", type=str, default=DEFAULT_GHIDRA_SERVER,

@@ -44,6 +44,7 @@ import ghidra.program.model.listing.Variable;
 import ghidra.app.decompiler.component.DecompilerUtils;
 import ghidra.app.decompiler.ClangToken;
 import ghidra.framework.options.Options;
+import ghidra.app.util.cparser.C.CParser;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -339,6 +340,16 @@ public class GhidraMCPPlugin extends Plugin {
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             String filter = qparams.get("filter");
             sendResponse(exchange, listDefinedStrings(offset, limit, filter));
+        });
+        
+        server.createContext("/create_type_from_c_definition", exchange -> {
+            try {
+                String cDefinition = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                String result = createTypeFromCDefinition(cDefinition);
+                sendResponse(exchange, result);
+            } catch (Exception e) {
+                sendResponse(exchange, "Error processing C definition: " + e.getMessage());
+            }
         });
 
         server.setExecutor(null);
@@ -1525,6 +1536,79 @@ public class GhidraMCPPlugin extends Plugin {
             }
         }
         return null;
+    }
+
+    /**
+     * Creates a data type from a C definition string.
+     * 
+     * @param cDefinition The C definition as a string (e.g., "struct Point { int x; int y; };")
+     * @return A string result with details of the operation
+     */
+    private String createTypeFromCDefinition(String cDefinition) {
+        if (cDefinition == null || cDefinition.isEmpty()) {
+            return "Error: Empty C definition provided";
+        }
+
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return "Error: No program loaded";
+        }
+        
+        StringBuilder result = new StringBuilder();
+        AtomicBoolean success = new AtomicBoolean(false);
+        
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                int tx = program.startTransaction("Create data type from C definition");
+                try {
+                    // Get program data type manager
+                    DataTypeManager dtm = program.getDataTypeManager();
+                    
+                    // Get data type manager service and collect all other data type managers
+                    DataTypeManager[] additionalDataTypeManagers = null;
+                    ghidra.app.services.DataTypeManagerService dtms = 
+                        tool.getService(ghidra.app.services.DataTypeManagerService.class);
+                    
+                    // Create C parser with the specified constructor
+                    ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(
+                        dtm,                        // Primary DataTypeManager to use for parsing
+                        true,                       // Store the data type
+                        dtms  // Additional DataTypeManagers for reference
+                    );
+                    
+                    // Parse the C definition - parse method returns a single DataType
+                    ghidra.program.model.data.DataType dataType = parser.parse(cDefinition);
+                    
+                    if (dataType == null) {
+                        result.append("Failed to parse C definition");
+                        return;
+                    }
+                    
+                    // Store the parsed type in the data type manager
+                    result.append("Successfully created data type:\n");
+                    // Try to add or get the existing data type
+                    ghidra.program.model.data.DataType addedType = dtm.addDataType(dataType, null);
+                    if (addedType != null) {
+                        result.append("- ").append(addedType.getName())
+                              .append(" (").append(addedType.getPathName()).append(")\n");
+                    }
+                    
+                    success.set(true);
+                } catch (Exception e) {
+                    String msg = "Error creating data type: " + e.getMessage();
+                    result.append(msg);
+                    Msg.error(this, msg, e);
+                } finally {
+                    program.endTransaction(tx, success.get());
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException e) {
+            String msg = "Failed to execute on Swing thread: " + e.getMessage();
+            result.append(msg);
+            Msg.error(this, msg, e);
+        }
+        
+        return result.toString();
     }
 
     // ----------------------------------------------------------------------------------
