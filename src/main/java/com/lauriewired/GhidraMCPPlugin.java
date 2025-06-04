@@ -1588,7 +1588,6 @@ public class GhidraMCPPlugin extends Plugin {
                     DataTypeManager dtm = program.getDataTypeManager();
                     
                     // Get data type manager service and collect all other data type managers
-                    DataTypeManager[] additionalDataTypeManagers = null;
                     ghidra.app.services.DataTypeManagerService dtms = 
                         tool.getService(ghidra.app.services.DataTypeManagerService.class);
                     
@@ -1596,7 +1595,7 @@ public class GhidraMCPPlugin extends Plugin {
                     ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(
                         dtm,                        // Primary DataTypeManager to use for parsing
                         true,                       // Store the data type
-                        dtms  // Additional DataTypeManagers for reference
+                        dtms.getDataTypeManagers()  // Additional DataTypeManagers for reference
                     );
                     
                     // Parse the C definition - parse method returns a single DataType
