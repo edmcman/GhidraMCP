@@ -6,6 +6,8 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.GlobalNamespace;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.symbol.*;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.Reference;
@@ -349,6 +351,27 @@ public class GhidraMCPPlugin extends Plugin {
                 sendResponse(exchange, result);
             } catch (Exception e) {
                 sendResponse(exchange, "Error processing C definition: " + e.getMessage());
+            }
+        });
+
+        server.createContext("/export_data", exchange -> {
+            Map<String, String> qparams = parseQueryParams(exchange);
+            String address = qparams.get("address");
+            String lengthStr = qparams.get("length");
+            
+            if (address == null || lengthStr == null) {
+                sendResponse(exchange, "Error: Both 'address' and 'length' parameters are required");
+                return;
+            }
+            
+            try {
+                int length = Integer.parseInt(lengthStr);
+                String result = exportDataFromAddress(address, length);
+                sendResponse(exchange, result);
+            } catch (NumberFormatException e) {
+                sendResponse(exchange, "Error: 'length' parameter must be a valid integer");
+            } catch (Exception e) {
+                sendResponse(exchange, "Error exporting data: " + e.getMessage());
             }
         });
 
@@ -1711,6 +1734,58 @@ public class GhidraMCPPlugin extends Plugin {
     public Program getCurrentProgram() {
         ProgramManager pm = tool.getService(ProgramManager.class);
         return pm != null ? pm.getCurrentProgram() : null;
+    }
+
+    /**
+     * Export raw data from memory at the specified address.
+     * 
+     * @param addressStr Address in hex format (e.g. "0x1400010a0")
+     * @param length Number of bytes to export
+     * @return Raw bytes as escaped string
+     */
+    private String exportDataFromAddress(String addressStr, int length) {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return "Error: No program loaded in Ghidra";
+        }
+
+        // Validate input parameters
+        if (addressStr == null || addressStr.trim().isEmpty()) {
+            return "Error: Address parameter is required";
+        }
+        
+        if (length <= 0) {
+            return "Error: Length must be greater than 0";
+        }
+
+        // Parse the address
+        Address address = program.getAddressFactory().getAddress(addressStr);
+        if (address == null) {
+            return "Error: Invalid address format: " + addressStr;
+        }
+
+        // Get memory and read the raw bytes
+        Memory memory = program.getMemory();
+        byte[] bytes = new byte[length];
+        int bytesRead;
+        try {
+            bytesRead = memory.getBytes(address, bytes);
+        } catch (MemoryAccessException e) {
+            return "Error: Cannot access memory at address " + addressStr + ": " + e.getMessage();
+        }
+        
+        if (bytesRead != length) {
+            return "Error: Could only read " + bytesRead + " of " + length + " requested bytes";
+        }
+
+        // Convert bytes directly to hex string format without spaces using array stream
+        Byte[] boxedBytes = new Byte[bytes.length];
+        for (int i = 0; i < bytes.length; i++) {
+            boxedBytes[i] = bytes[i];
+        }
+        return java.util.Arrays.stream(boxedBytes)
+            .map(b -> String.format("%02x", b & 0xFF))
+            .collect(java.util.stream.Collectors.joining());
     }
 
     private void sendResponse(HttpExchange exchange, String response) throws IOException {

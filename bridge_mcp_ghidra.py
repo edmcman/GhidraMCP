@@ -10,6 +10,7 @@ import sys
 import requests
 import argparse
 import logging
+import hashlib
 from urllib.parse import urljoin
 
 from mcp.server.fastmcp import FastMCP
@@ -304,6 +305,41 @@ def create_type_from_c_definition(c_definition: str) -> str:
         Result of the type creation operation
     """
     return safe_post("create_type_from_c_definition", c_definition)
+
+@mcp.tool()
+def export_data(address: str, length: int) -> dict:
+    """
+    Export raw data from memory at the specified address with SHA256 hash for verification.
+    
+    Args:
+        address: Address in hex format (e.g. "0x1400010a0")
+        length: Number of bytes to export
+        
+    Returns:
+        Dictionary containing hex data and SHA256 hash for verification
+    """
+    result = safe_get("export_data", {"address": address, "length": str(length)})
+    hex_data = "".join(result)
+
+    # If it's an error message, return it as-is
+    if hex_data.startswith("Error: "):
+        return {"error": hex_data}
+
+    try:
+        # Convert hex string to raw bytes
+        raw_bytes = bytes.fromhex(hex_data)
+        
+        # Calculate SHA256 hash
+        sha256_hash = hashlib.sha256(raw_bytes).hexdigest()
+        
+        # Return structured data with separate fields
+        return {
+            "data": raw_bytes,
+            "sha256": sha256_hash,
+        }
+        
+    except Exception as e:
+        return {"error": f"Error processing hex data: {str(e)}"}
 
 def main():
     parser = argparse.ArgumentParser(description="MCP server for Ghidra")
