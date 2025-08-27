@@ -567,7 +567,7 @@ public class GhidraMCPPlugin extends Plugin {
                     Msg.error(this, "Error renaming function", e);
                 }
                 finally {
-                    program.endTransaction(tx, successFlag.get());
+                    successFlag.set(program.endTransaction(tx, successFlag.get()));
                 }
             });
         }
@@ -689,7 +689,7 @@ public class GhidraMCPPlugin extends Plugin {
                     Msg.error(this, "Failed to rename variable", e);
                 }
                 finally {
-                    program.endTransaction(tx, true);
+                    successFlag.set(program.endTransaction(tx, true));
                 }
             });
         } catch (InterruptedException | InvocationTargetException e) {
@@ -912,7 +912,7 @@ public class GhidraMCPPlugin extends Plugin {
                 } catch (Exception e) {
                     Msg.error(this, "Error setting " + transactionName.toLowerCase(), e);
                 } finally {
-                    program.endTransaction(tx, success.get());
+                    success.set(program.endTransaction(tx, success.get()));
                 }
             });
         } catch (InterruptedException | InvocationTargetException e) {
