@@ -57,3 +57,7 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Logs
+*.log
+ghidra_mcp_server.log
+

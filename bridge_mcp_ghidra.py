@@ -6,6 +6,22 @@
 # ]
 # ///
 
+"""
+GhidraMCP Bridge - Model Context Protocol Server for Ghidra
+
+This bridge connects MCP clients to a GhidraMCP HTTP server running in Ghidra.
+
+Server Modes:
+1. Plugin Mode: Runs as a Ghidra plugin when CodeBrowser is open
+2. Headless Mode: Runs independently via GhidraScript (recommended for production)
+
+To start the headless server:
+Linux/macOS: ./start_headless_server.sh /path/to/ghidra
+Windows: start_headless_server.bat "C:\path\to\ghidra"
+
+Default server URL: http://127.0.0.1:8080/
+"""
+
 import sys
 import os
 import requests

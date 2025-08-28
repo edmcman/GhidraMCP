@@ -15,13 +15,14 @@ https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
 
 # Features
-MCP Server + Ghidra Plugin
+MCP Server + Ghidra Plugin/Script
 
 - Decompile and analyze binaries in Ghidra
 - Automatically rename methods and data
 - List methods, classes, imports, and exports
 - **NEW**: Import binary artifacts directly via REST API
 - **NEW**: Project status checking and management
+- **NEW**: Headless server mode for always-on operation
 
 # Installation
 
@@ -40,6 +41,59 @@ First, download the latest [release](https://github.com/LaurieWired/GhidraMCP/re
 5. Restart Ghidra
 6. Make sure the GhidraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 7. *Optional*: Configure the port in Ghidra with `Edit` -> `Tool Options` -> `GhidraMCP HTTP Server`
+
+## Headless Server Mode
+
+For production environments or always-on operation, you can run the GhidraMCP server in headless mode without the GUI:
+
+### Linux/macOS:
+```bash
+./start_headless_server.sh /path/to/ghidra_installation [project_path] [port]
+```
+
+### Windows:
+```batch
+start_headless_server.bat "C:\path\to\ghidra_installation" [project_path] [port]
+```
+
+**Example:**
+```bash
+# Linux/macOS
+./start_headless_server.sh /Applications/ghidra_10.3.1_PUBLIC ./my_project 8080
+
+# Windows
+start_headless_server.bat "C:\ghidra_10.3.1_PUBLIC" "C:\temp\project" 8080
+```
+
+The headless server will:
+- Start automatically without GUI dependencies
+- Create a temporary project if none exists
+- Run the HTTP server on the specified port (default: 8080)
+- Remain active until manually stopped
+
+**Advantages of headless mode:**
+- No GUI dependency - runs on servers without display
+- Always available - not tied to CodeBrowser lifecycle
+- Scriptable and automatable
+- Lower resource usage
+
+**Troubleshooting Headless Mode:**
+- Ensure the Ghidra installation path is correct
+- Check that Java is available (Ghidra includes its own JDK)
+- Verify the script has proper permissions
+- Check the log file `ghidra_mcp_server.log` for errors
+
+**Testing the Server:**
+```bash
+# Test if the server is running
+curl http://127.0.0.1:8080/ping
+
+# Check project status
+curl http://127.0.0.1:8080/project_status
+
+# List available functions (if a program is loaded)
+curl http://127.0.0.1:8080/functions
+```
 
 # New Artifact Import API
 
@@ -61,10 +115,51 @@ curl -X POST "http://127.0.0.1:8080/import_artifact?filename=malware.exe" \
 
 **Requirements**: A Ghidra project must be open for import functionality to work.
 
+## Server Architecture
+
+GhidraMCP provides two ways to run the HTTP server:
+
+### 1. Plugin Mode (GUI-dependent)
+- Runs as a Ghidra plugin when CodeBrowser is open
+- Automatic startup when plugin is enabled
+- Integrated with GUI tool options
+
+### 2. Headless Script Mode (Recommended for production)
+- Runs independently of the GUI
+- Always available once started
+- Better for automation and server deployments
+- Can be run via command line scripts
+
+## Migration from Plugin-Only Mode
+
+**Important:** Previous versions required the Ghidra GUI to be open for the HTTP server to be available. This created reliability issues where the server would be unavailable if CodeBrowser wasn't running.
+
+**New Approach:** The headless script mode solves this architectural limitation by running the HTTP server as a standalone Ghidra script, making it available regardless of GUI state.
+
+**Recommended Setup:**
+1. For development: Use plugin mode for convenience
+2. For production/automation: Use headless script mode for reliability
+
 ## MCP Tools
 The Python bridge includes corresponding tools:
 - `import_artifact(file_path, filename=None)` - Import binary file
 - `get_project_status()` - Check project status
+
+## Available API Endpoints
+
+### Core Endpoints
+- **GET** `/ping` - Health check and server information
+- **GET** `/project_status` - Check if a project is open and import is available
+- **POST** `/import_artifact?filename=<name>` - Upload binary data to import into current project
+
+### Analysis Endpoints  
+- **GET** `/functions` or `/methods` - List all functions in the current program
+- **POST** `/decompile` - Decompile a function by name (send function name in request body)
+
+### Legacy Plugin Endpoints
+When running in plugin mode, additional endpoints are available including:
+- Variable renaming, cross-references, string analysis, and more
+- See the full plugin implementation for complete API reference
 
 Video Installation Guide:
 
