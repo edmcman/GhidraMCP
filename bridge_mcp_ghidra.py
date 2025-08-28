@@ -7,6 +7,7 @@
 # ///
 
 import sys
+import os
 import requests
 import argparse
 import logging
@@ -340,6 +341,57 @@ def export_data(address: str, length: int) -> dict:
         
     except Exception as e:
         return {"error": f"Error processing hex data: {str(e)}"}
+
+@mcp.tool()
+def import_artifact(file_path: str, filename: str = None) -> str:
+    """
+    Import a binary artifact into the current Ghidra project for analysis.
+    
+    Args:
+        file_path: Path to the binary file to import
+        filename: Optional custom name for the imported artifact (defaults to original filename)
+        
+    Returns:
+        Result message indicating success or failure of the import operation
+    """
+    try:
+        # Read the file from the provided path
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
+        
+        # Use original filename if not provided
+        if filename is None:
+            filename = os.path.basename(file_path)
+        
+        # Prepare the request
+        params = {"filename": filename}
+        url = urljoin(ghidra_server_url, "import_artifact")
+        
+        # Add query parameters to URL
+        if params:
+            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+            url += f"?{query_string}"
+        
+        # Send POST request with binary data
+        response = requests.post(url, data=file_data, timeout=30)
+        response.raise_for_status()
+        
+        return response.text
+        
+    except FileNotFoundError:
+        return f"Error: File not found: {file_path}"
+    except Exception as e:
+        return f"Error importing artifact: {str(e)}"
+
+@mcp.tool()
+def get_project_status() -> str:
+    """
+    Get the current Ghidra project status to check if import functionality is available.
+    
+    Returns:
+        Status information about the current project and import availability
+    """
+    return safe_get("project_status")
 
 def main():
     parser = argparse.ArgumentParser(description="MCP server for Ghidra")

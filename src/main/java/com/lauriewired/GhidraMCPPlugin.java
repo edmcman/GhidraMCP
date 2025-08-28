@@ -51,9 +51,26 @@ import ghidra.app.util.cparser.C.CParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
+// Additional imports for file handling and project management
+import ghidra.framework.model.Project;
+import ghidra.framework.model.ProjectData;
+import ghidra.framework.model.DomainFile;
+import ghidra.framework.model.DomainFolder;
+import ghidra.app.util.importer.AutoImporter;
+import ghidra.app.util.importer.MessageLog;
+import ghidra.app.util.Option;
+import ghidra.program.database.ProgramBuilder;
+import ghidra.framework.store.LockException;
+import ghidra.util.exception.CancelledException;
+import ghidra.util.exception.VersionException;
+
 import javax.swing.SwingUtilities;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.InputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.ByteArrayInputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.net.URLDecoder;
@@ -375,6 +392,26 @@ public class GhidraMCPPlugin extends Plugin {
                 sendResponse(exchange, "Error: 'length' parameter must be a valid integer");
             } catch (Exception e) {
                 sendResponse(exchange, "Error exporting data: " + e.getMessage());
+            }
+        });
+
+        server.createContext("/import_artifact", exchange -> {
+            try {
+                String result = handleArtifactImport(exchange);
+                sendResponse(exchange, result);
+            } catch (Exception e) {
+                sendResponse(exchange, "Error importing artifact: " + e.getMessage());
+                Msg.error(this, "Error importing artifact", e);
+            }
+        });
+
+        server.createContext("/project_status", exchange -> {
+            try {
+                String result = getProjectStatus();
+                sendResponse(exchange, result);
+            } catch (Exception e) {
+                sendResponse(exchange, "Error getting project status: " + e.getMessage());
+                Msg.error(this, "Error getting project status", e);
             }
         });
 
@@ -1788,6 +1825,168 @@ public class GhidraMCPPlugin extends Plugin {
         return java.util.Arrays.stream(boxedBytes)
             .map(b -> String.format("%02x", b & 0xFF))
             .collect(java.util.stream.Collectors.joining());
+    }
+
+    /**
+     * Handle artifact import via HTTP endpoint.
+     * Supports both form data with file upload and binary data directly in request body.
+     */
+    private String handleArtifactImport(HttpExchange exchange) {
+        try {
+            String method = exchange.getRequestMethod();
+            if (!"POST".equalsIgnoreCase(method)) {
+                return "Error: Only POST method is supported for artifact import";
+            }
+
+            // Get the project for import - this is the key architectural consideration
+            Project project = tool.getProject();
+            if (project == null) {
+                return "Error: No project is open. Please open or create a project first.\n" +
+                       "The import functionality requires an active Ghidra project.\n" +
+                       "To create a project:\n" +
+                       "1. Open Ghidra GUI\n" +
+                       "2. File -> New Project or File -> Open Project\n" +
+                       "3. Then restart this plugin or reload the tool\n" +
+                       "Note: This is an architectural limitation where the HTTP server requires a project context.";
+            }
+
+            // Read the request body
+            InputStream requestBody = exchange.getRequestBody();
+            byte[] fileData = requestBody.readAllBytes();
+            
+            if (fileData.length == 0) {
+                return "Error: No file data received";
+            }
+
+            // Get filename from query parameters or use default
+            Map<String, String> queryParams = parseQueryParams(exchange);
+            String filename = queryParams.get("filename");
+            if (filename == null || filename.trim().isEmpty()) {
+                filename = "imported_artifact_" + System.currentTimeMillis();
+            }
+
+            // Import the artifact
+            return importArtifactToProject(project, fileData, filename);
+
+        } catch (Exception e) {
+            Msg.error(this, "Error in handleArtifactImport", e);
+            return "Error handling artifact import: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Get the current project status for diagnostic purposes.
+     * Helps users understand whether import functionality is available.
+     */
+    private String getProjectStatus() {
+        try {
+            Project project = tool.getProject();
+            if (project == null) {
+                return "Status: No project is currently open\n" +
+                       "Import functionality: UNAVAILABLE\n" +
+                       "Required: Open or create a Ghidra project\n" +
+                       "Current program: " + (getCurrentProgram() != null ? getCurrentProgram().getName() : "None") + "\n" +
+                       "\nTo enable import functionality:\n" +
+                       "1. Open Ghidra GUI\n" +
+                       "2. File -> New Project or File -> Open Project\n" +
+                       "3. Restart this plugin or reload the tool";
+            }
+
+            ProjectData projectData = project.getProjectData();
+            String projectName = project.getName();
+            String projectLocation = project.getProjectLocator().getLocation();
+            int fileCount = projectData.getRootFolder().getFiles().length;
+            
+            Program currentProgram = getCurrentProgram();
+            String currentProgramInfo = currentProgram != null ? 
+                currentProgram.getName() + " (" + currentProgram.getExecutablePath() + ")" : "None";
+
+            return "Status: Project is open\n" +
+                   "Import functionality: AVAILABLE\n" +
+                   "Project name: " + projectName + "\n" +
+                   "Project location: " + projectLocation + "\n" +
+                   "Files in project: " + fileCount + "\n" +
+                   "Current program: " + currentProgramInfo + "\n" +
+                   "\nYou can now import artifacts using the /import_artifact endpoint.";
+
+        } catch (Exception e) {
+            return "Error checking project status: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Import a binary artifact into the current project using Ghidra's AutoImporter.
+     */
+    private String importArtifactToProject(Project project, byte[] fileData, String filename) {
+        try {
+            // Create a temporary file for the import process
+            File tempFile = File.createTempFile("ghidra_import_", "_" + filename);
+            tempFile.deleteOnExit();
+            
+            try (FileOutputStream fos = new FileOutputStream(tempFile)) {
+                fos.write(fileData);
+            }
+
+            // Get project data and root folder
+            ProjectData projectData = project.getProjectData();
+            DomainFolder rootFolder = projectData.getRootFolder();
+
+            // Create a message log for import messages
+            MessageLog messageLog = new MessageLog();
+
+            // Use AutoImporter to import the file
+            List<Option> importOptions = new ArrayList<>();
+            
+            // Perform the import using SwingUtilities to ensure it runs on EDT
+            final AtomicBoolean importSuccess = new AtomicBoolean(false);
+            final StringBuilder resultMessage = new StringBuilder();
+            
+            SwingUtilities.invokeAndWait(() -> {
+                try {
+                    List<DomainFile> importedFiles = AutoImporter.importByUsingBestGuess(
+                        tempFile,           // File to import
+                        null,               // Project to import into (null = current)
+                        rootFolder,         // Folder to import into
+                        null,               // Loader (null = auto-detect)
+                        filename,           // Program name
+                        importOptions,      // Import options
+                        messageLog          // Message log
+                    );
+
+                    if (importedFiles != null && !importedFiles.isEmpty()) {
+                        importSuccess.set(true);
+                        resultMessage.append("Successfully imported ").append(importedFiles.size()).append(" file(s):\n");
+                        for (DomainFile file : importedFiles) {
+                            resultMessage.append("- ").append(file.getName()).append(" (").append(file.getPathname()).append(")\n");
+                        }
+                        
+                        // If there are any log messages, append them
+                        if (messageLog.hasMessages()) {
+                            resultMessage.append("\nImport messages:\n").append(messageLog.toString());
+                        }
+                    } else {
+                        resultMessage.append("Import failed: No files were imported");
+                        if (messageLog.hasMessages()) {
+                            resultMessage.append("\nError messages:\n").append(messageLog.toString());
+                        }
+                    }
+                } catch (Exception e) {
+                    resultMessage.append("Import failed with exception: ").append(e.getMessage());
+                    if (messageLog.hasMessages()) {
+                        resultMessage.append("\nError messages:\n").append(messageLog.toString());
+                    }
+                }
+            });
+
+            // Clean up temp file
+            tempFile.delete();
+
+            return resultMessage.toString();
+
+        } catch (Exception e) {
+            Msg.error(this, "Error importing artifact", e);
+            return "Error importing artifact: " + e.getMessage();
+        }
     }
 
     private void sendResponse(HttpExchange exchange, String response) throws IOException {
