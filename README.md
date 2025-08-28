@@ -20,6 +20,8 @@ MCP Server + Ghidra Plugin
 - Decompile and analyze binaries in Ghidra
 - Automatically rename methods and data
 - List methods, classes, imports, and exports
+- **NEW**: Import binary artifacts directly via REST API
+- **NEW**: Project status checking and management
 
 # Installation
 
@@ -38,6 +40,31 @@ First, download the latest [release](https://github.com/LaurieWired/GhidraMCP/re
 5. Restart Ghidra
 6. Make sure the GhidraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 7. *Optional*: Configure the port in Ghidra with `Edit` -> `Tool Options` -> `GhidraMCP HTTP Server`
+
+# New Artifact Import API
+
+The plugin now supports importing binary artifacts directly via REST API endpoints:
+
+## Import Endpoints
+- **POST** `/import_artifact?filename=<name>` - Upload binary data to import into current project
+- **GET** `/project_status` - Check if a project is open and import is available
+
+Example usage:
+```bash
+# Check project status
+curl http://127.0.0.1:8080/project_status
+
+# Import a binary
+curl -X POST "http://127.0.0.1:8080/import_artifact?filename=malware.exe" \
+     --data-binary @path/to/malware.exe
+```
+
+**Requirements**: A Ghidra project must be open for import functionality to work.
+
+## MCP Tools
+The Python bridge includes corresponding tools:
+- `import_artifact(file_path, filename=None)` - Import binary file
+- `get_project_status()` - Check project status
 
 Video Installation Guide:
 
