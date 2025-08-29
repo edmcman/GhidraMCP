@@ -14,6 +14,29 @@ ghidraMCP is an Model Context Protocol server for allowing LLMs to autonomously 
 https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
 
+# Quick Start
+
+## GUI Mode (Plugin)
+1. Build or download the extension: `GhidraMCP-1.0-SNAPSHOT.zip`
+2. Install in Ghidra: `File` → `Install Extensions` → `+` → Select ZIP
+3. Enable plugin: `File` → `Configure` → `Developer` → Check "GhidraMCPPluginRefactored"
+4. Load a program - HTTP server starts automatically on port 8080
+5. Access endpoints: `curl http://localhost:8080/methods`
+
+## Headless Mode (Command Line)
+```bash
+# Optional: Set custom port
+export GHIDRA_MCP_PORT=9090
+
+# Run with analyzeHeadless
+$GHIDRA_INSTALL_DIR/support/analyzeHeadless \
+  /tmp/proj project_name \
+  -import /path/to/binary \
+  -postScript HeadlessMCPServerScript.java
+
+```
+
+
 # Features
 MCP Server + Ghidra Plugin
 
