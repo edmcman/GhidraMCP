@@ -36,5 +36,14 @@
             </includes>
             <outputDirectory>GhidraMCP/lib</outputDirectory>
         </fileSet>
+        
+        <!-- 3) Copy ghidra_scripts directory into GhidraMCP/ghidra_scripts -->
+        <fileSet>
+            <directory>ghidra_scripts</directory>
+            <includes>
+                <include>**/*.java</include>
+            </includes>
+            <outputDirectory>GhidraMCP/ghidra_scripts</outputDirectory>
+        </fileSet>
     </fileSets>
 </assembly>
