@@ -17,27 +17,23 @@ import java.util.Optional;
     shortDescription = "HTTP server plugin",
     description = "Starts an embedded HTTP server to expose program data. Port configurable via Tool Options."
 )
-public class GhidraMCPPluginRefactored extends Plugin {
+public class GhidraMCPPlugin extends Plugin {
     private Optional<GhidraMCPServer> mcpServer = Optional.empty();
     private final GuiGhidraContext context;
     private static final String OPTION_CATEGORY_NAME = "GhidraMCP HTTP Server";
     private static final String PORT_OPTION_NAME = "Server Port";
     private static final int DEFAULT_PORT = 8080;
 
-    public GhidraMCPPluginRefactored(PluginTool tool) {
+    public GhidraMCPPlugin(PluginTool tool) {
         super(tool);
         this.context = new GuiGhidraContext(tool);
         
-        Msg.info(this, "GhidraMCP Plugin (Refactored) loading...");
+        Msg.info(this, "GhidraMCP Plugin loading...");
         
         registerOptions();
-        startServerWhenReady();
+        startServer();  // Start server immediately, regardless of program state
         
-        Msg.info(this, "GhidraMCP Plugin (Refactored) loaded!");
-    }
-
-    private void startServerWhenReady() {
-        context.ifProgramPresent(program -> startServer());
+        Msg.info(this, "GhidraMCP Plugin loaded!");
     }
 
     private void startServer() {
