@@ -33,9 +33,26 @@ $GHIDRA_INSTALL_DIR/support/analyzeHeadless \
   /tmp/proj project_name \
   -import /path/to/binary \
   -postScript HeadlessMCPServerScript.java
-
 ```
 
+## Automated Headless Mode (New!)
+The new `open_artifact_headless` tool allows you to automatically start Ghidra headless analysis without manually running `analyzeHeadless`. This is especially useful for MCP clients.
+
+### Prerequisites
+- Set the `GHIDRA_INSTALL_DIR` environment variable to point to your Ghidra installation directory
+
+### Usage
+```bash
+# Start the MCP bridge (optionally specify Ghidra server URL)
+python bridge_mcp_ghidra.py --enable-headless-tools --ghidra-server http://127.0.0.1:8080/
+
+# Then use the headless tools through your MCP client
+# This will automatically:
+# 1. Kill any existing Ghidra processes
+# 2. Start analyzeHeadless in the background 
+# 3. Set up the MCP server (using the port from --ghidra-server URL)
+# 4. Wait for the server to become available
+```
 
 # Features
 MCP Server + Ghidra Plugin
