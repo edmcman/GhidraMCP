@@ -14,6 +14,46 @@ ghidraMCP is an Model Context Protocol server for allowing LLMs to autonomously 
 https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
 
+# Quick Start
+
+## GUI Mode (Plugin)
+1. Build or download the extension: `GhidraMCP-1.0-SNAPSHOT.zip`
+2. Install in Ghidra: `File` → `Install Extensions` → `+` → Select ZIP
+3. Enable plugin: From the *Code Browser*: `File` → `Configure` → `Developer` → Check "GhidraMCPPlugin"
+4. Load a program - HTTP server starts automatically on port 8080
+5. Access endpoints: `curl http://localhost:8080/methods`
+
+## Headless Mode (Command Line)
+```bash
+# Optional: Set custom port
+export GHIDRA_MCP_PORT=9090
+
+# Run with analyzeHeadless
+$GHIDRA_INSTALL_DIR/support/analyzeHeadless \
+  /tmp/proj project_name \
+  -import /path/to/binary \
+  -postScript HeadlessMCPServerScript.java
+```
+
+## Automated Headless Mode (New!)
+The new `open_artifact_headless` tool allows you to automatically start Ghidra headless analysis without manually running `analyzeHeadless`. This is especially useful for MCP clients.
+
+### Prerequisites
+- Set the `GHIDRA_INSTALL_DIR` environment variable to point to your Ghidra installation directory
+
+### Usage
+```bash
+# Start the MCP bridge (optionally specify Ghidra server URL)
+python bridge_mcp_ghidra.py --enable-headless-tools --ghidra-server http://127.0.0.1:8080/
+
+# Then use the headless tools through your MCP client
+# This will automatically:
+# 1. Kill any existing Ghidra processes
+# 2. Start analyzeHeadless in the background 
+# 3. Set up the MCP server (using the port from --ghidra-server URL)
+# 4. Wait for the server to become available
+```
+
 # Features
 MCP Server + Ghidra Plugin
 
