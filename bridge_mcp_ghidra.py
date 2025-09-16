@@ -214,12 +214,15 @@ def open_artifact_headless(artifact_path: str) -> str:
         if wait_for_ghidra_server():
             return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url}"
         else:
+            logger.error("Timed out waiting for Ghidra MCP server to start")
+            ret = current_ghidra_process.poll()
+
             # Check if process is still running
-            if current_ghidra_process.poll() is not None:
-                stdout, stderr = current_ghidra_process.communicate()
-                return f"Error: Ghidra process exited unexpectedly. STDOUT: {stdout[-500:]} STDERR: {stderr[-500:]}"
+            if ret is not None:
+                return f"Error: Ghidra process exited unexpectedly. Exit: {ret}"
             else:
-                return f"Warning: Ghidra process started but MCP server did not become available at {ghidra_server_url}"
+                stdout, stderr = current_ghidra_process.communicate()
+                return f"Warning: Ghidra process started but MCP server did not become available at {ghidra_server_url}. Stdout: {stdout}, Stderr: {stderr}"
         
     except Exception as e:
         return f"Error starting Ghidra headless mode: {str(e)}"
