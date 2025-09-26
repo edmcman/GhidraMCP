@@ -337,6 +337,10 @@ public class GhidraAnalysisService {
     // ==============
 
     public List<String> getStrings(int offset, int limit) {
+        return getStrings(offset, limit, null);
+    }
+
+    public List<String> getStrings(int offset, int limit, String filter) {
         return context.<List<String>>withProgram(program -> {
             List<String> strings = new ArrayList<>();
             
@@ -347,7 +351,12 @@ public class GhidraAnalysisService {
                         Data data = it.next();
                         if (data.hasStringValue()) {
                             String value = data.getDefaultValueRepresentation();
-                            strings.add(String.format("%s: %s", data.getAddress(), escapeNonAscii(value)));
+                            String stringEntry = String.format("%s: %s", data.getAddress(), escapeNonAscii(value));
+                            
+                            // Apply filter if specified
+                            if (filter == null || value.toLowerCase().contains(filter.toLowerCase())) {
+                                strings.add(stringEntry);
+                            }
                         }
                     }
                 }
@@ -375,7 +384,13 @@ public class GhidraAnalysisService {
                 return parseAddress(program, addressStr)
                     .map(addr -> {
                         try {
-                            program.getListing().setComment(addr, commentType, comment);
+                            CodeUnit cu = program.getListing().getCodeUnitAt(addr);
+                            if (cu != null) {
+                                cu.setComment(commentType, comment);
+                            } else {
+                                context.showError("No code unit found at address " + addr);
+                                return false;
+                            }
                             return true;
                         } catch (Exception e) {
                             context.showError("Error setting comment: " + e.getMessage());
@@ -415,6 +430,85 @@ public class GhidraAnalysisService {
                 })
                 .orElse("Function '" + functionName + "' not found")
         ).orElse("No program loaded");
+    }
+
+    public String setLocalVariableType(String functionAddress, String variableName, String newType) {
+        return context.<String>withProgram(program -> {
+            int tx = program.startTransaction("Set variable type");
+            try {
+                return parseAddress(program, functionAddress)
+                    .flatMap(addr -> findFunctionByAddress(program, addr))
+                    .map(func -> {
+                        // Decompile function to get high function
+                        DecompInterface decomp = new DecompInterface();
+                        decomp.openProgram(program);
+                        DecompileResults results = decomp.decompileFunction(func, 30, context.getTaskMonitor());
+                        
+                        if (results == null || !results.decompileCompleted()) {
+                            return "Decompilation failed for function at " + functionAddress;
+                        }
+                        
+                        return Optional.ofNullable(results.getHighFunction())
+                            .map(highFunction -> {
+                                DataTypeManager dtm = program.getDataTypeManager();
+                                
+                                return Optional.ofNullable(findSymbolByName(highFunction, variableName))
+                                    .flatMap(symbol -> Optional.ofNullable(resolveDataType(dtm, newType))
+                                        .map(dataType -> {
+                                            try {
+                                                // Update the variable type using HighFunctionDBUtil
+                                                ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
+                                                    symbol,
+                                                    symbol.getName(),
+                                                    dataType,
+                                                    SourceType.USER_DEFINED
+                                                );
+                                                return "Variable type set successfully to " + dataType.getName();
+                                            } catch (Exception e) {
+                                                throw new RuntimeException("Failed to update variable: " + e.getMessage(), e);
+                                            }
+                                        })
+                                    )
+                                    .orElse(Optional.ofNullable(resolveDataType(dtm, newType))
+                                        .map(dt -> "Variable '" + variableName + "' not found in function")
+                                        .orElse("Could not resolve data type: " + newType)
+                                    );
+                            })
+                            .orElse("No high function available for " + functionAddress);
+                    })
+                    .orElse("No function at address: " + functionAddress);
+                
+            } catch (Exception e) {
+                return "Error setting variable type: " + e.getMessage();
+            } finally {
+                program.endTransaction(tx, true);
+            }
+        }).orElse("No program loaded");
+    }
+    
+    private ghidra.program.model.pcode.HighSymbol findSymbolByName(ghidra.program.model.pcode.HighFunction highFunction, String variableName) {
+        java.util.Iterator<ghidra.program.model.pcode.HighSymbol> symbols = highFunction.getLocalSymbolMap().getSymbols();
+        return StreamSupport.stream(
+            java.util.Spliterators.spliteratorUnknownSize(symbols, java.util.Spliterator.ORDERED), false)
+            .filter(symbol -> symbol.getName().equals(variableName))
+            .findFirst()
+            .orElse(null);
+    }
+    
+    private DataType resolveDataType(DataTypeManager dtm, String typeName) {
+        try {
+            // Use Ghidra's built-in C parser - handles pointers, built-ins, and complex types
+            ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(dtm);
+            return parser.parse(typeName);
+        } catch (Exception e) {
+            // Fallback using functional approach
+            return Optional.ofNullable(dtm.getDataType("/" + typeName))
+                .orElseGet(() -> StreamSupport.stream(
+                    java.util.Spliterators.spliteratorUnknownSize(dtm.getAllDataTypes(), java.util.Spliterator.ORDERED), false)
+                    .filter(dt -> dt.getName().equalsIgnoreCase(typeName))
+                    .findFirst()
+                    .orElse(dtm.getDataType("/void")));
+        }
     }
 
     // Function Prototype Operations
@@ -465,47 +559,33 @@ public class GhidraAnalysisService {
         ).orElse("No program loaded");
     }
 
-    private DataType findDataType(DataTypeManager dtm, String typeName) {
-        // Common type mappings
-        switch (typeName.toLowerCase()) {
-            case "void": return VoidDataType.dataType;
-            case "char": case "byte": return CharDataType.dataType;
-            case "short": return ShortDataType.dataType;
-            case "int": return IntegerDataType.dataType;
-            case "long": return LongDataType.dataType;
-            case "float": return FloatDataType.dataType;
-            case "double": return DoubleDataType.dataType;
-            case "pointer": case "ptr": return PointerDataType.dataType;
-            default:
-                // Try to find in data type manager
-                return dtm.getDataType("/" + typeName);
-        }
-    }
-
     // Type Creation and Data Export
     // =============================
 
-    public String createStruct(String structName, String[] fieldNames, String[] fieldTypes) {
+    public String createTypeFromCDefinition(String cDefinition) {
         return context.<String>withProgram(program -> {
-            int tx = program.startTransaction("Create struct");
+            int tx = program.startTransaction("Create type from C definition");
             try {
                 DataTypeManager dtm = program.getDataTypeManager();
                 
-                // Create structure
-                StructureDataType struct = new StructureDataType(structName, 0);
+                // Parse C definition using Ghidra's C parser
+                ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(dtm);
                 
-                for (int i = 0; i < fieldNames.length && i < fieldTypes.length; i++) {
-                    DataType fieldType = findDataType(dtm, fieldTypes[i]);
-                    if (fieldType == null) {
-                        return "Unknown field type: " + fieldTypes[i];
-                    }
-                    struct.add(fieldType, fieldNames[i], null);
+                // Parse the definition
+                DataType parsedType = parser.parse(cDefinition);
+                
+                if (parsedType == null) {
+                    return "Failed to parse C definition: " + cDefinition;
                 }
                 
-                dtm.addDataType(struct, null);
-                return "Struct '" + structName + "' created successfully";
+                dtm.addDataType(parsedType, null);
+                
+                return "Successfully created type: " + parsedType.getName() + " (" + parsedType.getClass().getSimpleName() + ")";
+                
+            } catch (ghidra.app.util.cparser.C.ParseException e) {
+                return "Parse error in C definition: " + e.getMessage();
             } catch (Exception e) {
-                return "Error creating struct: " + e.getMessage();
+                return "Error creating type from C definition: " + e.getMessage();
             } finally {
                 program.endTransaction(tx, true);
             }
@@ -528,6 +608,34 @@ public class GhidraAnalysisService {
             
             return export.toString();
         }).orElse("No program loaded");
+    }
+
+    public String exportData(String addressStr, int length) {
+        return context.<String>withProgram(program -> {
+            try {
+                Address addr = parseAddress(program, addressStr)
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid address: " + addressStr));
+                
+                if (length <= 0 || length > 1024 * 1024) { // Limit to 1MB for safety
+                    return "Error: Invalid length (must be 1-1048576): " + length;
+                }
+                
+                byte[] bytes = new byte[length];
+                int bytesRead = program.getMemory().getBytes(addr, bytes);
+                
+                if (bytesRead != length) {
+                    return "Error: Could only read " + bytesRead + " of " + length + " bytes";
+                }
+                
+                // Convert to hex string using functional approach
+                return java.util.stream.IntStream.range(0, bytes.length)
+                    .mapToObj(i -> String.format("%02x", bytes[i] & 0xFF))
+                    .collect(Collectors.joining());
+                
+            } catch (Exception e) {
+                return "Error: " + e.getMessage();
+            }
+        }).orElse("Error: No program loaded");
     }
 
     // Helper Methods (Pure Functions)
@@ -578,20 +686,19 @@ public class GhidraAnalysisService {
     }
 
     private String disassembleFunctionInstructions(Program program, Function function) {
-        StringBuilder result = new StringBuilder();
-        result.append("Function: ").append(function.getName()).append(" @ ").append(function.getEntryPoint()).append("\n");
-        
         try {
             InstructionIterator instructions = program.getListing().getInstructions(function.getBody(), true);
-            while (instructions.hasNext()) {
-                Instruction inst = instructions.next();
-                result.append(inst.getAddress()).append(": ").append(inst.toString()).append("\n");
-            }
+            
+            String header = String.format("Function: %s @ %s\n", function.getName(), function.getEntryPoint());
+            String instructionList = StreamSupport.stream(
+                java.util.Spliterators.spliteratorUnknownSize(instructions, java.util.Spliterator.ORDERED), false)
+                .map(inst -> String.format("%s: %s", inst.getAddress(), inst.toString()))
+                .collect(Collectors.joining("\n"));
+                
+            return header + instructionList;
         } catch (Exception e) {
             return "Error disassembling function: " + e.getMessage();
         }
-        
-        return result.toString();
     }
 
     private String escapeNonAscii(String input) {

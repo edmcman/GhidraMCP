@@ -391,8 +391,22 @@ public class GhidraMCPServer {
         // Data export operations
         server.createContext("/export_data", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {
-                String result = analysisService.exportFunctions();
-                sendResponse(exchange, result);
+                Map<String, String> qparams = parseQueryParams(exchange);
+                String address = qparams.get("address");
+                String lengthStr = qparams.get("length");
+                
+                if (address == null || lengthStr == null) {
+                    sendResponse(exchange, "Error: address and length parameters are required");
+                    return;
+                }
+                
+                try {
+                    int length = Integer.parseInt(lengthStr);
+                    String result = analysisService.exportData(address, length);
+                    sendResponse(exchange, result);
+                } catch (NumberFormatException e) {
+                    sendResponse(exchange, "Error: Invalid length parameter: " + lengthStr);
+                }
             } else {
                 exchange.sendResponseHeaders(405, -1);
             }
@@ -403,31 +417,8 @@ public class GhidraMCPServer {
             Map<String, String> params = parsePostParams(exchange);
             String cDefinition = params.get("definition");
             
-            String result = "Type creation from C definition not yet implemented: " + cDefinition;
+            String result = analysisService.createTypeFromCDefinition(cDefinition);
             sendResponse(exchange, result);
-        });
-
-        // Struct creation
-        server.createContext("/create_struct", exchange -> {
-            if ("POST".equals(exchange.getRequestMethod())) {
-                Map<String, String> params = parseJsonRequest(exchange);
-                String structName = params.get("name");
-                String fieldNamesStr = params.get("field_names");
-                String fieldTypesStr = params.get("field_types");
-                
-                // Simple parsing for arrays (in real use, would need proper JSON parsing)
-                String[] fieldNames = fieldNamesStr != null ? 
-                    fieldNamesStr.split(",") : new String[0];
-                String[] fieldTypes = fieldTypesStr != null ? 
-                    fieldTypesStr.split(",") : new String[0];
-                
-                String result = analysisService.createStruct(structName, fieldNames, fieldTypes);
-                Map<String, Object> response = new HashMap<>();
-                response.put("result", result);
-                sendJsonResponse(exchange, response);
-            } else {
-                exchange.sendResponseHeaders(405, -1);
-            }
         });
     }
 
