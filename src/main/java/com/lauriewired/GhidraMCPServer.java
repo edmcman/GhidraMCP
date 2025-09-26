@@ -37,52 +37,6 @@ public class GhidraMCPServer {
         server.start();
     }
 
-    // Helper methods for JSON parsing
-    // ===============================
-
-    private Map<String, String> parseJsonRequest(HttpExchange exchange) {
-        try {
-            byte[] bodyBytes = readAllBytes(exchange.getRequestBody());
-            String body = new String(bodyBytes, StandardCharsets.UTF_8);
-            // Simple JSON parsing for basic key-value pairs
-            Map<String, String> params = new HashMap<>();
-            if (body.startsWith("{") && body.endsWith("}")) {
-                String content = body.substring(1, body.length() - 1);
-                String[] pairs = content.split(",");
-                for (String pair : pairs) {
-                    String[] kv = pair.split(":");
-                    if (kv.length == 2) {
-                        String key = kv[0].trim().replaceAll("\"", "");
-                        String value = kv[1].trim().replaceAll("\"", "");
-                        params.put(key, value);
-                    }
-                }
-            }
-            return params;
-        } catch (Exception e) {
-            context.showError("Error parsing JSON request: " + e.getMessage());
-            return new HashMap<>();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> parseJsonRequestGeneric(HttpExchange exchange) {
-        try {
-            byte[] bodyBytes = readAllBytes(exchange.getRequestBody());
-            String body = new String(bodyBytes, StandardCharsets.UTF_8);
-            // Simple JSON parsing - this is a basic implementation
-            // In production, you'd want to use a proper JSON library
-            Map<String, Object> result = new HashMap<>();
-            // For now, delegate to the string parser and convert
-            Map<String, String> stringMap = parseJsonRequest(exchange);
-            result.putAll(stringMap);
-            return result;
-        } catch (Exception e) {
-            context.showError("Error parsing JSON request: " + e.getMessage());
-            return new HashMap<>();
-        }
-    }
-
     private void sendJsonResponse(HttpExchange exchange, Map<String, Object> response) throws IOException {
         // Simple JSON serialization - in production use a proper JSON library
         StringBuilder json = new StringBuilder();
@@ -317,7 +271,7 @@ public class GhidraMCPServer {
         // Comment endpoints
         server.createContext("/set_decompiler_comment", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
-                Map<String, String> params = parseJsonRequest(exchange);
+                Map<String, String> params = parsePostParams(exchange);
                 String address = params.get("address");
                 String comment = params.get("comment");
                 
@@ -332,7 +286,7 @@ public class GhidraMCPServer {
 
         server.createContext("/set_disassembly_comment", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
-                Map<String, String> params = parseJsonRequest(exchange);
+                Map<String, String> params = parsePostParams(exchange);
                 String address = params.get("address");
                 String comment = params.get("comment");
                 
@@ -348,7 +302,7 @@ public class GhidraMCPServer {
         // Variable operations
         server.createContext("/rename_variable", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
-                Map<String, String> params = parseJsonRequest(exchange);
+                Map<String, String> params = parsePostParams(exchange);
                 String functionName = params.get("function");
                 String oldName = params.get("old_name");
                 String newName = params.get("new_name");
