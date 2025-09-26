@@ -327,6 +327,20 @@ public class GhidraMCPServer {
             sendResponse(exchange, result);
         });
 
+        server.createContext("/set_local_variable_type", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parsePostParams(exchange);
+                String functionAddress = params.get("function_address");
+                String variableName = params.get("variable_name");
+                String newType = params.get("new_type");
+                
+                String result = analysisService.setLocalVariableType(functionAddress, variableName, newType);
+                sendResponse(exchange, result);
+            } else {
+                exchange.sendResponseHeaders(405, -1);
+            }
+        });
+
         // Function prototype operations
         server.createContext("/set_function_prototype", exchange -> {
             Map<String, String> params = parsePostParams(exchange);

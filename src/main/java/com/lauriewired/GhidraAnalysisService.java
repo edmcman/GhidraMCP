@@ -518,27 +518,27 @@ public class GhidraAnalysisService {
                             .map(highFunction -> {
                                 DataTypeManager dtm = program.getDataTypeManager();
                                 
-                                return Optional.ofNullable(findSymbolByName(highFunction, variableName))
-                                    .flatMap(symbol -> Optional.ofNullable(resolveDataType(dtm, newType))
-                                        .map(dataType -> {
-                                            try {
-                                                // Update the variable type using HighFunctionDBUtil
-                                                ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
-                                                    symbol,
-                                                    symbol.getName(),
-                                                    dataType,
-                                                    SourceType.USER_DEFINED
-                                                );
-                                                return "Variable type set successfully to " + dataType.getName();
-                                            } catch (Exception e) {
-                                                throw new RuntimeException("Failed to update variable: " + e.getMessage(), e);
-                                            }
-                                        })
-                                    )
-                                    .orElse(Optional.ofNullable(resolveDataType(dtm, newType))
-                                        .map(dt -> "Variable '" + variableName + "' not found in function")
-                                        .orElse("Could not resolve data type: " + newType)
-                                    );
+                                ghidra.program.model.pcode.HighSymbol symbol = findSymbolByName(highFunction, variableName);
+                                if (symbol == null) {
+                                    return "Variable '" + variableName + "' not found in function";
+                                }
+                                
+                                return resolveDataType(dtm, newType)
+                                    .map(dataType -> {
+                                        try {
+                                            // Update the variable type using HighFunctionDBUtil
+                                            ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
+                                                symbol,
+                                                symbol.getName(),
+                                                dataType,
+                                                SourceType.USER_DEFINED
+                                            );
+                                            return "Variable type set successfully to " + dataType.getName();
+                                        } catch (Exception e) {
+                                            throw new RuntimeException("Failed to update variable: " + e.getMessage(), e);
+                                        }
+                                    })
+                                    .orElse("Could not resolve data type: " + newType);
                             })
                             .orElse("No high function available for " + functionAddress);
                     })
@@ -561,19 +561,22 @@ public class GhidraAnalysisService {
             .orElse(null);
     }
     
-    private DataType resolveDataType(DataTypeManager dtm, String typeName) {
+    private Optional<DataType> resolveDataType(DataTypeManager dtm, String typeName) {
         try {
             // Use Ghidra's built-in C parser - handles pointers, built-ins, and complex types
             ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(dtm);
-            return parser.parse(typeName);
+            DataType parsedType = parser.parse(typeName);
+            return Optional.ofNullable(parsedType);
         } catch (Exception e) {
             // Fallback using functional approach
-            return Optional.ofNullable(dtm.getDataType("/" + typeName))
-                .orElseGet(() -> StreamSupport.stream(
-                    java.util.Spliterators.spliteratorUnknownSize(dtm.getAllDataTypes(), java.util.Spliterator.ORDERED), false)
-                    .filter(dt -> dt.getName().equalsIgnoreCase(typeName))
-                    .findFirst()
-                    .orElse(dtm.getDataType("/void")));
+            Optional<DataType> directType = Optional.ofNullable(dtm.getDataType("/" + typeName));
+            if (directType.isPresent()) {
+                return directType;
+            }
+            return StreamSupport.stream(
+                java.util.Spliterators.spliteratorUnknownSize(dtm.getAllDataTypes(), java.util.Spliterator.ORDERED), false)
+                .filter(dt -> dt.getName().equalsIgnoreCase(typeName))
+                .findFirst();
         }
     }
 
