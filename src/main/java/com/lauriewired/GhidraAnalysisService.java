@@ -9,7 +9,6 @@ import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
 import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
-import ghidra.app.services.DataTypeManagerService;
 import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -594,11 +593,9 @@ public class GhidraAnalysisService {
                         // Get data type manager
                         DataTypeManager dtm = program.getDataTypeManager();
                         
-                        // Get data type manager service from context
-                        DataTypeManagerService dtms = context.getDataTypeManagerService().orElse(null);
-                        
                         // Create function signature parser
-                        FunctionSignatureParser parser = new FunctionSignatureParser(dtm, dtms);
+                        // Don't pass dtms or else headed mode will open dialog boxes!
+                        FunctionSignatureParser parser = new FunctionSignatureParser(dtm, null);
                         
                         // Parse the prototype
                         FunctionDefinitionDataType sig = parser.parse(null, prototype);
