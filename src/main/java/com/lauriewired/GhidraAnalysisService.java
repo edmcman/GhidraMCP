@@ -407,29 +407,95 @@ public class GhidraAnalysisService {
     // Variable Operations
     // ==================
 
-    public String renameVariableInFunction(String functionName, String oldVarName, String newVarName) {
+    public String renameVariableInFunction(String functionName, String oldName, String newName) {
         return context.<String>withProgram(program -> 
             findFunctionByName(program, functionName)
                 .map(func -> {
-                    Variable[] variables = func.getAllVariables();
+                    // Decompile function to access high function
+                    DecompInterface decomp = new DecompInterface();
+                    decomp.openProgram(program);
+                    DecompileResults results = decomp.decompileFunction(func, 30, context.getTaskMonitor());
                     
-                    for (Variable var : variables) {
-                        if (var.getName().equals(oldVarName)) {
-                            int tx = program.startTransaction("Rename variable");
-                            try {
-                                var.setName(newVarName, SourceType.USER_DEFINED);
-                                return "Variable renamed successfully";
-                            } catch (Exception e) {
-                                return "Failed to rename variable: " + e.getMessage();
-                            } finally {
-                                program.endTransaction(tx, true);
-                            }
-                        }
+                    if (results == null || !results.decompileCompleted()) {
+                        return "Decompilation failed for function " + functionName;
                     }
-                    return "Variable '" + oldVarName + "' not found in function '" + functionName + "'";
+                    
+                    return Optional.ofNullable(results.getHighFunction())
+                        .flatMap(highFunction -> Optional.ofNullable(highFunction.getLocalSymbolMap()))
+                        .map(localSymbolMap -> {
+                            // Check if new name already exists
+                            boolean newNameExists = StreamSupport.stream(
+                                java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
+                                .anyMatch(symbol -> symbol.getName().equals(newName));
+                                
+                            if (newNameExists) {
+                                return "Error: A variable with name '" + newName + "' already exists in this function";
+                            }
+                            
+                            // Find the symbol to rename
+                            return StreamSupport.stream(
+                                java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
+                                .filter(symbol -> symbol.getName().equals(oldName))
+                                .findFirst()
+                                .map(highSymbol -> {
+                                    int tx = program.startTransaction("Rename variable");
+                                    try {
+                                        // Check if full commit is required (from the example)
+                                        boolean commitRequired = checkFullCommit(highSymbol, results.getHighFunction());
+                                        
+                                        if (commitRequired) {
+                                            ghidra.program.model.pcode.HighFunctionDBUtil.commitParamsToDatabase(
+                                                results.getHighFunction(), false,
+                                                ghidra.program.model.pcode.HighFunctionDBUtil.ReturnCommitOption.NO_COMMIT,
+                                                func.getSignatureSource());
+                                        }
+                                        
+                                        // Update the variable name using HighFunctionDBUtil
+                                        ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
+                                            highSymbol,
+                                            newName,
+                                            null,  // Keep existing data type
+                                            SourceType.USER_DEFINED
+                                        );
+                                        
+                                        return "Variable renamed successfully";
+                                    } catch (Exception e) {
+                                        return "Failed to rename variable: " + e.getMessage();
+                                    } finally {
+                                        program.endTransaction(tx, true);
+                                    }
+                                })
+                                .orElse("Variable '" + oldName + "' not found in function '" + functionName + "'");
+                        })
+                        .orElse("No local symbol map available for function " + functionName);
                 })
                 .orElse("Function '" + functionName + "' not found")
         ).orElse("No program loaded");
+    }
+    
+    // Helper method from the example code for checking if full commit is needed
+    private boolean checkFullCommit(ghidra.program.model.pcode.HighSymbol highSymbol, ghidra.program.model.pcode.HighFunction hfunction) {
+        if (highSymbol != null && !highSymbol.isParameter()) {
+            return false;
+        }
+        Function function = hfunction.getFunction();
+        Parameter[] parameters = function.getParameters();
+        ghidra.program.model.pcode.LocalSymbolMap localSymbolMap = hfunction.getLocalSymbolMap();
+        int numParams = localSymbolMap.getNumParams();
+        if (numParams != parameters.length) {
+            return true;
+        }
+        for (int i = 0; i < numParams; i++) {
+            ghidra.program.model.pcode.HighSymbol param = localSymbolMap.getParamSymbol(i);
+            if (param.getCategoryIndex() != i) {
+                return true;
+            }
+            ghidra.program.model.listing.VariableStorage storage = param.getStorage();
+            if (0 != storage.compareTo(parameters[i].getVariableStorage())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public String setLocalVariableType(String functionAddress, String variableName, String newType) {

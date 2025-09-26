@@ -390,9 +390,9 @@ def rename_variable(function_name: str, old_name: str, new_name: str) -> str:
     Rename a local variable within a function.
     """
     return safe_post("renameVariable", {
-        "functionName": function_name,
-        "oldName": old_name,
-        "newName": new_name
+        "function": function_name,
+        "old_name": old_name,
+        "new_name": new_name
     })
 
 @mcp.tool()
