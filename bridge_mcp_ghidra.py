@@ -263,25 +263,15 @@ def close_ghidra_headless() -> str:
 @mcp.tool()
 def get_ghidra_status() -> str:
     """
-    Get the status of the current Ghidra headless process and server.
+    Get the status of the Ghidra MCP server and any headless processes.
     
     Returns:
-        Status information about the Ghidra process and MCP server
+        Status information about the Ghidra server and headless processes (if applicable)
     """
-    error_msg = check_headless_tools_enabled()
-    if error_msg:
-        return error_msg
-    
     global current_ghidra_process
     
     try:
-        # Check if we have a tracked process
-        process_status = "No tracked process"
-        if current_ghidra_process:
-            if current_ghidra_process.poll() is None:
-                process_status = f"Process running (PID: {current_ghidra_process.pid})"
-            else:
-                process_status = f"Process exited (return code: {current_ghidra_process.returncode})"
+        status_lines = []
         
         # Check server connectivity
         try:
@@ -290,11 +280,25 @@ def get_ghidra_status() -> str:
         except:
             server_status = f"MCP server not reachable at {ghidra_server_url}"
         
-        status_lines = [
-            f"Tracked process: {process_status}",
-            f"Server: {server_status}",
-            f"Project directory: {current_project_dir or 'None'}"
-        ]
+        status_lines.append(f"Server: {server_status}")
+        
+        # Check headless process status if headless tools are enabled
+        if headless_tools_enabled:
+            # Check if we have a tracked process
+            process_status = "No tracked process"
+            if current_ghidra_process:
+                if current_ghidra_process.poll() is None:
+                    process_status = f"Process running (PID: {current_ghidra_process.pid})"
+                else:
+                    process_status = f"Process exited (return code: {current_ghidra_process.returncode})"
+            
+            status_lines.extend([
+                f"Tracked process: {process_status}",
+                f"Project directory: {current_project_dir or 'None'}",
+                "Mode: Headless"
+            ])
+        else:
+            status_lines.append("Mode: Headed (GUI)")
         
         return "\n".join(status_lines)
         

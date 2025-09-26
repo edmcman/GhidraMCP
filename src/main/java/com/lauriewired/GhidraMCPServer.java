@@ -376,15 +376,15 @@ public class GhidraMCPServer {
         // Function prototype operations
         server.createContext("/set_function_prototype", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            String functionName = params.get("function");
-            String returnType = params.get("return_type");
-            String paramTypesStr = params.get("param_types");
-            String paramNamesStr = params.get("param_names");
+            String functionAddress = params.get("function_address");
+            String prototype = params.get("prototype");
             
-            String[] paramTypes = paramTypesStr != null ? paramTypesStr.split(",") : new String[0];
-            String[] paramNames = paramNamesStr != null ? paramNamesStr.split(",") : new String[0];
+            if (functionAddress == null || prototype == null) {
+                sendResponse(exchange, "Error: function_address and prototype parameters are required");
+                return;
+            }
             
-            String result = analysisService.setFunctionPrototype(functionName, returnType, paramTypes, paramNames);
+            String result = analysisService.setFunctionPrototype(functionAddress, prototype);
             sendResponse(exchange, result);
         });
 

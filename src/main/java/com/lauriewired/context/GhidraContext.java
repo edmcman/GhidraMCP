@@ -3,6 +3,7 @@ package com.lauriewired.context;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.address.Address;
 import ghidra.util.task.TaskMonitor;
+import ghidra.app.services.DataTypeManagerService;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -45,5 +46,9 @@ public interface GhidraContext {
     
     default boolean isGuiMode() {
         return false; // Override in GUI context
+    }
+    
+    default Optional<DataTypeManagerService> getDataTypeManagerService() {
+        return Optional.empty(); // Not available in headless mode
     }
 }

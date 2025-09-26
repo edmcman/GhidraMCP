@@ -7,6 +7,9 @@ import ghidra.program.model.symbol.*;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
+import ghidra.app.util.parser.FunctionSignatureParser;
+import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
+import ghidra.app.services.DataTypeManagerService;
 import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -417,47 +420,48 @@ public class GhidraAnalysisService {
     // Function Prototype Operations
     // ============================
 
-    public String setFunctionPrototype(String functionName, String returnType, String[] paramTypes, String[] paramNames) {
+    public String setFunctionPrototype(String functionAddress, String prototype) {
         return context.<String>withProgram(program ->
-            findFunctionByName(program, functionName)
+            parseAddress(program, functionAddress)
+                .flatMap(addr -> findFunctionByAddress(program, addr))
                 .map(func -> {
                     int tx = program.startTransaction("Set function prototype");
+                    boolean success = false;
                     try {
+                        // Get data type manager
                         DataTypeManager dtm = program.getDataTypeManager();
                         
-                        // Get return type
-                        DataType retType = findDataType(dtm, returnType);
-                        if (retType == null) {
-                            return "Unknown return type: " + returnType;
+                        // Get data type manager service from context
+                        DataTypeManagerService dtms = context.getDataTypeManagerService().orElse(null);
+                        
+                        // Create function signature parser
+                        FunctionSignatureParser parser = new FunctionSignatureParser(dtm, dtms);
+                        
+                        // Parse the prototype
+                        FunctionDefinitionDataType sig = parser.parse(null, prototype);
+                        if (sig == null) {
+                            return "Failed to parse function prototype: " + prototype;
                         }
                         
-                        // Set return type
-                        func.setReturnType(retType, SourceType.USER_DEFINED);
+                        // Create and apply the command
+                        ApplyFunctionSignatureCmd cmd = new ApplyFunctionSignatureCmd(
+                            func.getEntryPoint(), sig, SourceType.USER_DEFINED);
                         
-                        // Build parameter list
-                        List<Parameter> params = new ArrayList<>();
-                        for (int i = 0; i < paramTypes.length; i++) {
-                            DataType paramType = findDataType(dtm, paramTypes[i]);
-                            if (paramType == null) {
-                                return "Unknown parameter type: " + paramTypes[i];
-                            }
-                            
-                            String paramName = (i < paramNames.length) ? paramNames[i] : "param" + i;
-                            params.add(new ParameterImpl(paramName, paramType, program));
+                        // Apply the command
+                        success = cmd.applyTo(program, context.getTaskMonitor());
+                        
+                        if (success) {
+                            return "Function prototype updated successfully";
+                        } else {
+                            return "Failed to apply function signature: " + cmd.getStatusMsg();
                         }
-                        
-                        // Replace all parameters
-                        func.replaceParameters(params, Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS, 
-                            true, SourceType.USER_DEFINED);
-                        
-                        return "Function prototype updated successfully";
                     } catch (Exception e) {
                         return "Error setting function prototype: " + e.getMessage();
                     } finally {
-                        program.endTransaction(tx, true);
+                        program.endTransaction(tx, success);
                     }
                 })
-                .orElse("Function '" + functionName + "' not found")
+                .orElse("Function not found at address: " + functionAddress)
         ).orElse("No program loaded");
     }
 
