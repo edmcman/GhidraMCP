@@ -551,7 +551,7 @@ def create_type_from_c_definition(c_definition: str) -> str:
     Returns:
         Result of the type creation operation
     """
-    return safe_post("create_type_from_c_definition", c_definition)
+    return safe_post("create_type_from_c_definition", {"definition": c_definition})
 
 @mcp.tool()
 def export_data(address: str, length: int) -> dict:
