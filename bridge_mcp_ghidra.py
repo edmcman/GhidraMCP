@@ -93,13 +93,13 @@ def kill_existing_ghidra_processes():
     return killed_count
 
 def wait_for_ghidra_server(max_wait_time=60):
-    """Wait for the Ghidra MCP server to become available."""
+    """Wait for the Ghidra HTTP server to become available."""
     start_time = time.time()
     while time.time() - start_time < max_wait_time:
         try:
             response = requests.get(urljoin(ghidra_server_url, "methods"), timeout=2)
             if response.ok:
-                logger.info("Ghidra MCP server is ready")
+                logger.info("Ghidra HTTP server is ready")
                 return True
         except:
             pass
@@ -201,29 +201,40 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         logger.info(f"Starting Ghidra headless analysis: {' '.join(cmd)}")
         
-        # Start the process
+        # Build shell command with output limiting to prevent buffering issues
+        # Capture last ~60KB (just under typical 64KB pipe buffer) to get recent errors
+        shell_cmd = ' '.join(f"'{arg}'" if ' ' in arg else arg for arg in cmd) + ' 2>&1 | tail -c 61440'
+        
+        # Start the process with shell to enable pipe redirection
         current_ghidra_process = subprocess.Popen(
-            cmd,
+            shell_cmd,
             env=env,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
+            stderr=subprocess.DEVNULL,  # Already merged via 2>&1
+            text=True,
+            shell=True
         )
         
         # Wait for server to become available
-        logger.info("Waiting for Ghidra MCP server to start...")
+        logger.info(f"Waiting for Ghidra HTTP server to become available at {ghidra_server_url} (waiting up to 60s)...")
         if wait_for_ghidra_server():
             return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url}"
-        else:
-            logger.error("Timed out waiting for Ghidra MCP server to start")
-            ret = current_ghidra_process.poll()
-
-            # Check if process is still running
-            if ret is not None:
-                return f"Error: Ghidra process exited unexpectedly. Exit: {ret}"
-            else:
-                stdout, stderr = current_ghidra_process.communicate()
-                return f"Warning: Ghidra process started but MCP server did not become available at {ghidra_server_url}. Stdout: {stdout}, Stderr: {stderr}"
+        
+        logger.error("Timed out waiting for Ghidra HTTP server to start")
+        
+        # Check if process is still running
+        if (ret := current_ghidra_process.poll()) is not None:
+            stdout, _ = current_ghidra_process.communicate()
+            return f"Error: Ghidra process exited unexpectedly (code {ret})\n{stdout}"
+        
+        # Process still running but server didn't start - get output with timeout
+        try:
+            stdout, _ = current_ghidra_process.communicate(timeout=5)
+            return f"Warning: Server not available at {ghidra_server_url}. Output:\n{stdout}"
+        except subprocess.TimeoutExpired:
+            current_ghidra_process.kill()
+            stdout, _ = current_ghidra_process.communicate()
+            return f"Warning: Server not available at {ghidra_server_url}. Process killed. Output:\n{stdout}"
         
     except Exception as e:
         return f"Error starting Ghidra headless mode: {str(e)}"
@@ -264,7 +275,7 @@ def close_ghidra_headless() -> str:
 @mcp.tool()
 def get_ghidra_status() -> str:
     """
-    Get the status of the Ghidra MCP server and any headless processes.
+    Get the status of the Ghidra HTTP server and any headless processes.
     
     Returns:
         Status information about the Ghidra server and headless processes (if applicable)
@@ -277,9 +288,9 @@ def get_ghidra_status() -> str:
         # Check server connectivity
         try:
             response = requests.get(urljoin(ghidra_server_url, "methods"), timeout=2)
-            server_status = f"MCP server reachable at {ghidra_server_url}" if response.ok else f"MCP server not responding at {ghidra_server_url}"
+            server_status = f"HTTP server reachable at {ghidra_server_url}" if response.ok else f"HTTP server not responding at {ghidra_server_url}"
         except:
-            server_status = f"MCP server not reachable at {ghidra_server_url}"
+            server_status = f"HTTP server not reachable at {ghidra_server_url}"
         
         status_lines.append(f"Server: {server_status}")
         
