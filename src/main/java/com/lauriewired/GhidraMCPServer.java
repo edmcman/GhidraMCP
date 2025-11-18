@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * HTTP server wrapper that exposes GhidraAnalysisService functionality via REST endpoints.
+ * HTTP server wrapper that exposes GhidraAnalysisService functionality via REST
+ * endpoints.
  * This class is shared between GUI and headless modes.
  */
 public class GhidraMCPServer {
@@ -43,7 +44,8 @@ public class GhidraMCPServer {
         json.append("{");
         boolean first = true;
         for (Map.Entry<String, Object> entry : response.entrySet()) {
-            if (!first) json.append(",");
+            if (!first)
+                json.append(",");
             json.append("\"").append(entry.getKey()).append("\":");
             Object value = entry.getValue();
             if (value instanceof String) {
@@ -56,7 +58,7 @@ public class GhidraMCPServer {
             first = false;
         }
         json.append("}");
-        
+
         byte[] bytes = json.toString().getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(200, bytes.length);
@@ -79,7 +81,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getAllFunctionNames(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -88,7 +90,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getAllClassNames(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -110,14 +112,14 @@ public class GhidraMCPServer {
         server.createContext("/renameFunction", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             boolean success = analysisService.renameFunction(
-                params.get("oldName"), params.get("newName"));
+                    params.get("oldName"), params.get("newName"));
             sendResponse(exchange, success ? "Renamed successfully" : "Rename failed");
         });
 
         server.createContext("/rename_function_by_address", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             boolean success = analysisService.renameFunctionByAddress(
-                params.get("function_address"), params.get("new_name"));
+                    params.get("function_address"), params.get("new_name"));
             sendResponse(exchange, success ? "Renamed successfully" : "Rename failed");
         });
 
@@ -126,7 +128,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listSegments(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -135,7 +137,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listImports(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -144,7 +146,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listExports(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -153,7 +155,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listNamespaces(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -163,7 +165,7 @@ public class GhidraMCPServer {
             String searchTerm = qparams.get("query");
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.searchFunctionsByName(searchTerm, offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -173,7 +175,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listDefinedData(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -181,7 +183,7 @@ public class GhidraMCPServer {
         server.createContext("/renameData", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             boolean success = analysisService.renameDataAtAddress(
-                params.get("address"), params.get("newName"));
+                    params.get("address"), params.get("newName"));
             sendResponse(exchange, success ? "Data renamed successfully" : "Failed to rename data");
         });
 
@@ -203,7 +205,7 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.listFunctions(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -219,7 +221,7 @@ public class GhidraMCPServer {
             String address = qparams.get("address");
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getXrefsTo(address, offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -229,7 +231,7 @@ public class GhidraMCPServer {
             String address = qparams.get("address");
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getXrefsFrom(address, offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -239,7 +241,7 @@ public class GhidraMCPServer {
             String functionName = qparams.get("function_name");
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getFunctionXrefs(functionName, offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
@@ -248,13 +250,22 @@ public class GhidraMCPServer {
             Map<String, String> qparams = parseQueryParams(exchange);
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            
+
             List<String> result = analysisService.getStrings(offset, limit);
             sendResponse(exchange, String.join("\n", result));
         });
 
         // Additional advanced endpoints
         // =============================
+
+        server.createContext("/run_script", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parsePostParams(exchange);
+                String script = params.get("script");
+                String result = analysisService.runScript(script);
+                sendResponse(exchange, String.join("\n", result));
+            }
+        });
 
         // Data export endpoint
         server.createContext("/export_functions", exchange -> {
@@ -274,7 +285,7 @@ public class GhidraMCPServer {
                 Map<String, String> params = parsePostParams(exchange);
                 String address = params.get("address");
                 String comment = params.get("comment");
-                
+
                 boolean success = analysisService.setDecompilerComment(address, comment);
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", success);
@@ -289,7 +300,7 @@ public class GhidraMCPServer {
                 Map<String, String> params = parsePostParams(exchange);
                 String address = params.get("address");
                 String comment = params.get("comment");
-                
+
                 boolean success = analysisService.setDisassemblyComment(address, comment);
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", success);
@@ -306,7 +317,7 @@ public class GhidraMCPServer {
                 String functionName = params.get("function");
                 String oldName = params.get("old_name");
                 String newName = params.get("new_name");
-                
+
                 String result = analysisService.renameVariableInFunction(functionName, oldName, newName);
                 Map<String, Object> response = new HashMap<>();
                 response.put("result", result);
@@ -322,7 +333,7 @@ public class GhidraMCPServer {
             String functionName = params.get("function");
             String oldName = params.get("old_name");
             String newName = params.get("new_name");
-            
+
             String result = analysisService.renameVariableInFunction(functionName, oldName, newName);
             sendResponse(exchange, result);
         });
@@ -333,7 +344,7 @@ public class GhidraMCPServer {
                 String functionAddress = params.get("function_address");
                 String variableName = params.get("variable_name");
                 String newType = params.get("new_type");
-                
+
                 String result = analysisService.setLocalVariableType(functionAddress, variableName, newType);
                 sendResponse(exchange, result);
             } else {
@@ -346,12 +357,12 @@ public class GhidraMCPServer {
             Map<String, String> params = parsePostParams(exchange);
             String functionAddress = params.get("function_address");
             String prototype = params.get("prototype");
-            
+
             if (functionAddress == null || prototype == null) {
                 sendResponse(exchange, "Error: function_address and prototype parameters are required");
                 return;
             }
-            
+
             String result = analysisService.setFunctionPrototype(functionAddress, prototype);
             sendResponse(exchange, result);
         });
@@ -362,12 +373,12 @@ public class GhidraMCPServer {
                 Map<String, String> qparams = parseQueryParams(exchange);
                 String address = qparams.get("address");
                 String lengthStr = qparams.get("length");
-                
+
                 if (address == null || lengthStr == null) {
                     sendResponse(exchange, "Error: address and length parameters are required");
                     return;
                 }
-                
+
                 try {
                     int length = Integer.parseInt(lengthStr);
                     String result = analysisService.exportData(address, length);
@@ -384,7 +395,7 @@ public class GhidraMCPServer {
         server.createContext("/create_type_from_c_definition", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String cDefinition = params.get("definition");
-            
+
             String result = analysisService.createTypeFromCDefinition(cDefinition);
             sendResponse(exchange, result);
         });
