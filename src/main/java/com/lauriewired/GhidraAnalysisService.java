@@ -108,9 +108,8 @@ public class GhidraAnalysisService {
         ProgramLocation loc = (currentProgram != null && currentAddress != null)
                 ? new ProgramLocation(currentProgram, currentAddress)
                 : null;
-        PluginTool tool = context.getTool()
-                .orElseThrow(() -> new IllegalStateException("No PluginTool available in current context (likely headless mode)"));
-        Project project = tool.getProject();
+        PluginTool tool = context.getTool().orElse(null);
+        Project project = tool != null ? tool.getProject() : null;
         return new GhidraState(tool, project, currentProgram, loc, null, null);
     }
 
