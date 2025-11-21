@@ -74,7 +74,7 @@ public class GhidraAnalysisService {
             script.execute(ghidraState, TaskMonitor.DUMMY, outWriter);
 
             // Clean up the script file
-            if (scriptFile.exists()) {
+            if (scriptFile != null && scriptFile.exists()) {
                 scriptFile.delete();
             }
 
