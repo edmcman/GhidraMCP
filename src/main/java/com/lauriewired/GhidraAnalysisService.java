@@ -50,55 +50,64 @@ public class GhidraAnalysisService {
      * @throws Exception   if there is an error during script instantiation or execution (caught and returned as error message)
      */
     public String runScript(String scriptName, String scriptSource) {
+        return createScriptFile(scriptName, scriptSource)
+            .flatMap(scriptFile -> loadScript(scriptFile))
+            .map(script -> executeScript(script, scriptName))
+            .orElse("Script execution failed");
+    }
+
+    private Optional<ResourceFile> createScriptFile(String scriptName, String scriptSource) {
         try {
-            // Create the new script in the user's script directory
             ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
-            try (FileWriter writer = new FileWriter(new File(scriptDir.getFile(false), scriptName))) {
+            File scriptFile = new File(scriptDir.getFile(false), scriptName);
+            try (FileWriter writer = new FileWriter(scriptFile)) {
                 writer.write(scriptSource);
             }
+            return Optional.of(new ResourceFile(scriptFile));
+        } catch (IOException e) {
+            Msg.error(this, "Error writing script file: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
 
-            // Wait for script file to be fully written
-            ResourceFile scriptFile = null;
-            GhidraScript script = null;
-
-            // Retry script instantiation (needed for Java scripts in particular)
-            int attempts = 3;
-            do {
-                scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
-                --attempts;
-
+    private Optional<GhidraScript> loadScript(ResourceFile scriptFile) {
+        return java.util.stream.IntStream.range(0, 3)
+            .mapToObj(attempt -> {
                 try {
                     Thread.sleep(1000);
-                } catch (InterruptedException ix) {
-                }
-
-                try {
                     GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
-                    script = provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
-                } catch (GhidraScriptLoadException gsle) {
-                    Msg.error(this, "Failed to find script, trying again");
+                    return provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
+                } catch (Exception e) {
+                    Msg.error(this, "Script load attempt " + (attempt + 1) + " failed");
                 }
-            } while (script == null && attempts > 0);
+                return null;
+            })
+            .filter(Objects::nonNull)
+            .findFirst();
+    }
 
-            // Execute the script
-            GhidraState ghidraState = getState();
+    private String executeScript(GhidraScript script, String scriptName) {
+        try {
             StringWriter stringWriter = new StringWriter();
             PrintWriter outWriter = new PrintWriter(stringWriter);
-            script.execute(ghidraState, TaskMonitor.DUMMY, outWriter);
+            script.execute(getState(), TaskMonitor.DUMMY, outWriter);
+            return stringWriter.toString();
+        } catch (Exception e) {
+            return "Error running script: " + e.getMessage();
+        } finally {
+            cleanupScriptFile(scriptName);
+        }
+    }
 
-            // Clean up the script file
+    private void cleanupScriptFile(String scriptName) {
+        try {
+            // don't call this
+            ResourceFile scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
             if (scriptFile != null && scriptFile.exists()) {
                 scriptFile.delete();
             }
-
-            return stringWriter.toString();
-
-        } catch (IOException e) {
-            Msg.error(this, "Error writing script file: " + e.getMessage());
-            return e.getMessage();
         } catch (Exception e) {
-            Msg.error(this, "Error running script: " + e.getMessage());
-            return e.getMessage();
+            Msg.error(this, "Error cleaning up script file: " + e.getMessage());
         }
     }
 
