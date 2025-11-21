@@ -56,6 +56,5 @@ public interface GhidraContext {
 
     default Optional<PluginTool> getTool() {
         return Optional.empty();
-
     }
 }
