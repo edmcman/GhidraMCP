@@ -12,8 +12,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -25,6 +23,7 @@ import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.script.GhidraScript;
+import ghidra.app.script.GhidraScriptLoadException;
 import ghidra.app.script.GhidraScriptProvider;
 import ghidra.app.script.GhidraScriptUtil;
 import ghidra.app.script.GhidraState;
@@ -72,76 +71,78 @@ public class GhidraAnalysisService {
     // Core Analysis Methods
     // =====================
 
-    public String runScript(String scriptSource) {
+    public String runScript(String scriptName, String scriptSource) {
 
         try {
-            // Get Ghidra's user scripts directory
-            String scriptName = createScript(scriptSource);
-            ResourceFile scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
-            GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
-            GhidraScript script = provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
-            GhidraState ghidraState = getState(context);
 
+            // Create the new script in the
+            ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
+            try (FileWriter writer = new FileWriter(new File(scriptDir.getFile(false), scriptName))) {
+                writer.write(scriptSource);
+            }
+
+            // This pause is to allow the file to be fully written. If it isn't here
+            ResourceFile scriptFile = null;
+            GhidraScript script = null;
+
+            // this is totally arbtrary, but a pause is needed. I've noticed that with Java
+            // the script instantiation tends to fail on the first try when ghidra is
+            // started
+            int attempts = 3;
+            do {
+                scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
+                --attempts;
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ix) {
+                }
+
+                try {
+                    GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
+                    script = provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
+                } catch (GhidraScriptLoadException gsle) {
+                    Msg.error(this, "Failed to find script, trying again");
+                }
+            } while (script == null && attempts > 0);
+
+            // Fetch the script and run it
+            GhidraState ghidraState = getState();
+
+            // These should redirect output, but alas
             StringWriter stringWriter = new StringWriter();
             PrintWriter ouWriter = new PrintWriter(stringWriter);
-            
+
             script.execute(ghidraState, TaskMonitor.DUMMY, ouWriter);
 
+            // Remove the script, should this be a configurable choice?
+            if (scriptFile.exists()) {
+                scriptFile.delete();
+            }
+            // return script output (in theory)
             return stringWriter.toString();
 
         } catch (IOException e) {
             Msg.error(this, "Error writing script file: " + e.getMessage());
             e.printStackTrace();
+            return e.getMessage();
 
         } catch (Exception e) {
             Msg.error(this, "Error running script: " + e.getMessage());
             System.err.println("Error running script: " + e.getMessage());
             e.printStackTrace();
+            return e.getMessage();
 
         }
-        return "";
     }
 
-    /**
-     * Create the script file in the user's script directory and return it's name
-     * @param scriptSource
-     * @return
-     * @throws Exception
-     */
-    private String createScript(String scriptSource) throws Exception {
-
-        // Get Ghidra's user scripts directory
-        ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
-
-        Pattern pattern = Pattern.compile(
-                "public\\s+class\\s+(\\w+)\\s+extends\\s+GhidraScript\\b",
-                Pattern.MULTILINE);
-
-        Matcher m = pattern.matcher(scriptSource);
-
-        String scriptName = "";
-        if (m.find()) {
-            scriptName = m.group(1) + ".java";
-        }
-        // Create the script file
-        File scriptFile = new File(scriptDir.getFile(false), scriptName);
-
-        // Write the script content to file
-        try (FileWriter writer = new FileWriter(scriptFile)) {
-            writer.write(scriptSource);
-        }
-
-        return scriptName;
-
-    }
-
-    private GhidraState getState(GhidraContext ctx) {
-        Program currentProgram = ctx.getCurrentProgram().orElse(null);
-        Address currentAddress = ctx.getCurrentAddress().orElse(null);
+    private GhidraState getState() {
+        Program currentProgram = context.getCurrentProgram().orElse(null);
+        Address currentAddress = context.getCurrentAddress().orElse(null);
         ProgramLocation loc = (currentProgram != null && currentAddress != null)
                 ? new ProgramLocation(currentProgram, currentAddress)
                 : null;
-        PluginTool tool = ctx.getTool().get();
+        PluginTool tool = context.getTool().get();
         Project project = tool.getProject();
 
         return new GhidraState(tool, project, currentProgram, loc, null, null);

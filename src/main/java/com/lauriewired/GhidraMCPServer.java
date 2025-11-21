@@ -262,7 +262,9 @@ public class GhidraMCPServer {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parsePostParams(exchange);
                 String script = params.get("script");
-                String result = analysisService.runScript(script);
+                String name = params.get("name");
+                
+                String result = analysisService.runScript(name, script);
                 sendResponse(exchange, String.join("\n", result));
             }
         });
