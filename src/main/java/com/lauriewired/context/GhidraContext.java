@@ -4,6 +4,8 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.address.Address;
 import ghidra.util.task.TaskMonitor;
 import ghidra.app.services.DataTypeManagerService;
+import ghidra.framework.plugintool.PluginTool;
+
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -50,5 +52,10 @@ public interface GhidraContext {
     
     default Optional<DataTypeManagerService> getDataTypeManagerService() {
         return Optional.empty(); // Not available in headless mode
+    }
+
+    default Optional<PluginTool> getTool() {
+        return Optional.empty();
+
     }
 }
