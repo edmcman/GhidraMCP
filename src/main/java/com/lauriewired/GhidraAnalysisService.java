@@ -95,12 +95,9 @@ public class GhidraAnalysisService {
 
         } catch (IOException e) {
             Msg.error(this, "Error writing script file: " + e.getMessage());
-            e.printStackTrace();
             return e.getMessage();
         } catch (Exception e) {
             Msg.error(this, "Error running script: " + e.getMessage());
-            System.err.println("Error running script: " + e.getMessage());
-            e.printStackTrace();
             return e.getMessage();
         }
     }
