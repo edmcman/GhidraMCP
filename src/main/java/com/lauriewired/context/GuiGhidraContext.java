@@ -29,6 +29,11 @@ public class GuiGhidraContext implements GhidraContext {
     public TaskMonitor getTaskMonitor() {
         return TaskMonitor.DUMMY; // Or get from tool if available
     }
+
+    @Override
+    public Optional<PluginTool> getTool() {
+        return Optional.of(tool);
+    }
     
     @Override
     public void showMessage(String message) {

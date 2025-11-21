@@ -9,7 +9,15 @@ import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
 import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
+import ghidra.app.script.*;
+import ghidra.framework.model.Project;
+import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.util.ProgramLocation;
+import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitor;
+import generic.jar.ResourceFile;
 import java.util.*;
+import java.io.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import java.util.stream.Collectors;
@@ -27,6 +35,84 @@ public class GhidraAnalysisService {
 
     // Core Analysis Methods
     // =====================
+
+    /**
+     * Runs a Ghidra script by writing the provided source code to a script file, 
+     * instantiating and executing it, and returning its output.
+     * <p>
+     * The script is created in the user's script directory, loaded and executed with the current Ghidra state.
+     * After execution, the script file is deleted.
+     *
+     * @param scriptName   the name of the script file to create and execute (e.g., "MyScript.java")
+     * @param scriptSource the source code of the script to execute
+     * @return the output produced by the script, or an error message if execution fails
+     * @throws IOException if there is an error writing the script file (caught and returned as error message)
+     * @throws Exception   if there is an error during script instantiation or execution (caught and returned as error message)
+     */
+    public String runScript(String scriptName, String scriptSource) {
+        try {
+            // Create the new script in the user's script directory
+            ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
+            try (FileWriter writer = new FileWriter(new File(scriptDir.getFile(false), scriptName))) {
+                writer.write(scriptSource);
+            }
+
+            // Wait for script file to be fully written
+            ResourceFile scriptFile = null;
+            GhidraScript script = null;
+
+            // Retry script instantiation (needed for Java scripts in particular)
+            int attempts = 3;
+            do {
+                scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
+                --attempts;
+
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ix) {
+                }
+
+                try {
+                    GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
+                    script = provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
+                } catch (GhidraScriptLoadException gsle) {
+                    Msg.error(this, "Failed to find script, trying again");
+                }
+            } while (script == null && attempts > 0);
+
+            // Execute the script
+            GhidraState ghidraState = getState();
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter outWriter = new PrintWriter(stringWriter);
+            script.execute(ghidraState, TaskMonitor.DUMMY, outWriter);
+
+            // Clean up the script file
+            if (scriptFile != null && scriptFile.exists()) {
+                scriptFile.delete();
+            }
+
+            return stringWriter.toString();
+
+        } catch (IOException e) {
+            Msg.error(this, "Error writing script file: " + e.getMessage());
+            return e.getMessage();
+        } catch (Exception e) {
+            Msg.error(this, "Error running script: " + e.getMessage());
+            return e.getMessage();
+        }
+    }
+
+    private GhidraState getState() {
+        Program currentProgram = context.getCurrentProgram().orElse(null);
+        Address currentAddress = context.getCurrentAddress().orElse(null);
+        ProgramLocation loc = (currentProgram != null && currentAddress != null)
+                ? new ProgramLocation(currentProgram, currentAddress)
+                : null;
+        PluginTool tool = context.getTool()
+                .orElseThrow(() -> new IllegalStateException("No PluginTool available in current context (likely headless mode)"));
+        Project project = tool.getProject();
+        return new GhidraState(tool, project, currentProgram, loc, null, null);
+    }
 
     public List<String> getAllFunctionNames(int offset, int limit) {
         return context.<List<String>>withProgram(program -> 

@@ -553,6 +553,21 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: str = None) -> list
     return safe_get("strings", params)
 
 @mcp.tool()
+def run_ghidra_script(name: str, script: str) -> str:
+    """
+    Run a Ghidra script.
+
+    Args:
+        name: The name of the script file, including the extension (e.g., "MyScript.java" or "MyScript.py")
+        script: The source code for the script to run
+
+    Returns:
+        Result of the script execution as a string or null if there is an error
+    """
+    params = {"script": script, "name": name}
+    return safe_post("run_script", params)
+        
+@mcp.tool()
 def create_type_from_c_definition(c_definition: str) -> str:
     """
     Create a data type from its C definition string.
