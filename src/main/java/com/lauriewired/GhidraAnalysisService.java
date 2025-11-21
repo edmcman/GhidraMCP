@@ -36,6 +36,19 @@ public class GhidraAnalysisService {
     // Core Analysis Methods
     // =====================
 
+    /**
+     * Runs a Ghidra script by writing the provided source code to a script file, 
+     * instantiating and executing it, and returning its output.
+     * <p>
+     * The script is created in the user's script directory, loaded and executed with the current Ghidra state.
+     * After execution, the script file is deleted.
+     *
+     * @param scriptName   the name of the script file to create and execute (e.g., "MyScript.java")
+     * @param scriptSource the source code of the script to execute
+     * @return the output produced by the script, or an error message if execution fails
+     * @throws IOException if there is an error writing the script file (caught and returned as error message)
+     * @throws Exception   if there is an error during script instantiation or execution (caught and returned as error message)
+     */
     public String runScript(String scriptName, String scriptSource) {
         try {
             // Create the new script in the user's script directory
