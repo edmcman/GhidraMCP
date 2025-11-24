@@ -62,3 +62,22 @@ dependencies {
 // Exclude additional files from the built extension
 // Ex: buildExtension.exclude '.idea/**'
 buildExtension.exclude '.github'
+
+// Install task to unzip the extension into Ghidra's Extensions directory
+task install {
+	group = 'Ghidra'
+	description = 'Installs the extension into Ghidra Extensions directory'
+	dependsOn buildExtension
+	
+	doLast {
+		def extensionsDir = new File(ghidraInstallDir, 'Ghidra/Extensions')
+		def zipFile = file("${buildExtension.destinationDirectory.get()}/${buildExtension.archiveBaseName.get()}.${buildExtension.archiveExtension.get()}")
+		
+		copy {
+			from zipTree(zipFile)
+			into extensionsDir
+		}
+		
+		println "Extension installed to ${extensionsDir}"
+	}
+}
