@@ -139,21 +139,27 @@ Another MCP client that supports multiple models on the backend is [5ire](https:
 3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py`
 
 # Building from Source
-1. Copy the following files from your Ghidra directory to this project's `lib/` directory:
-- `Ghidra/Features/Base/lib/Base.jar`
-- `Ghidra/Features/Decompiler/lib/Decompiler.jar`
-- `Ghidra/Framework/Docking/lib/Docking.jar`
-- `Ghidra/Framework/Generic/lib/Generic.jar`
-- `Ghidra/Framework/Project/lib/Project.jar`
-- `Ghidra/Framework/SoftwareModeling/lib/SoftwareModeling.jar`
-- `Ghidra/Framework/Utility/lib/Utility.jar`
-- `Ghidra/Framework/Gui/lib/Gui.jar`
-2. Build with Maven by running:
 
-`mvn clean package assembly:single`
+**Note:** The extension now uses Ghidra's standard build system. You no longer need to manually copy JAR files.
 
-The generated zip file includes the built Ghidra plugin and its resources. These files are required for Ghidra to recognize the new extension.
+Build with Gradle by running:
 
-- lib/GhidraMCP.jar
-- extensions.properties
-- Module.manifest
+```bash
+./gradlew -PGHIDRA_INSTALL_DIR=/path/to/ghidra
+```
+
+Or set as environment variable:
+
+```bash
+export GHIDRA_INSTALL_DIR=/path/to/ghidra
+./gradlew
+```
+
+Or on Windows:
+
+```cmd
+set GHIDRA_INSTALL_DIR=C:\path\to\ghidra
+gradlew.bat
+```
+
+The generated zip file will be in `dist/` and includes the built Ghidra plugin and its resources.
