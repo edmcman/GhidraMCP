@@ -14,6 +14,8 @@ import ghidra.framework.model.Project;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.util.ProgramLocation;
 import ghidra.util.Msg;
+import ghidra.util.ErrorLogger;
+import ghidra.util.DefaultErrorLogger;
 import ghidra.util.task.TaskMonitor;
 import generic.jar.ResourceFile;
 import java.util.*;
@@ -87,15 +89,138 @@ public class GhidraAnalysisService {
     }
 
     private String executeScript(GhidraScript script, String scriptName) {
+        StringWriter outputWriter = new StringWriter();
+        StringWriter logWriter = new StringWriter();
+        
+        // Create custom error logger to capture Msg.* output
+        ErrorLogger captureLogger = new CaptureErrorLogger(logWriter);
+        
         try {
-            StringWriter stringWriter = new StringWriter();
-            PrintWriter outWriter = new PrintWriter(stringWriter);
+            // Install our capturing logger
+            Msg.setErrorLogger(captureLogger);
+            
+            // Execute script with output writer
+            PrintWriter outWriter = new PrintWriter(outputWriter);
             script.execute(getState(), TaskMonitor.DUMMY, outWriter);
-            return stringWriter.toString();
+            
+            // Combine script output and captured logs
+            
+            StringBuilder result = new StringBuilder();
+            String scriptOutput = outputWriter.toString();
+            String logOutput = logWriter.toString();
+            
+            if (!scriptOutput.isEmpty()) {
+                result.append(scriptOutput);
+            }
+            if (!logOutput.isEmpty()) {
+                if (result.length() > 0) {
+                    result.append("\n");
+                }
+                result.append("=== Captured Logs ===\n").append(logOutput);
+            }
+            
+            return result.length() > 0 ? result.toString() : "Script completed with no output";
         } catch (Exception e) {
             return "Error running script: " + e.getMessage();
         } finally {
+            // Restore default error logger
+            Msg.setErrorLogger(new DefaultErrorLogger());
             cleanupScriptFile(scriptName);
+        }
+    }
+    
+    /**
+     * Custom ErrorLogger that captures all log messages to a writer.
+     * Based on DefaultErrorLogger pattern.
+     */
+    private static class CaptureErrorLogger implements ErrorLogger {
+        private final PrintWriter writer;
+        
+        CaptureErrorLogger(StringWriter stringWriter) {
+            this.writer = new PrintWriter(stringWriter);
+        }
+        
+        private String formatMessage(Object message) {
+            if (message == null) {
+                return "null";
+            }
+            // Handle ScriptMessage and other log4j Message objects
+            if (message.getClass().getName().contains("Message")) {
+                try {
+                    // Try to get the formatted message using reflection
+                    java.lang.reflect.Method getFormattedMessage = message.getClass().getMethod("getFormattedMessage");
+                    return String.valueOf(getFormattedMessage.invoke(message));
+                } catch (Exception e) {
+                    // Fallback to toString
+                    return message.toString();
+                }
+            }
+            return String.valueOf(message);
+        }
+        
+        @Override
+        public void trace(Object originator, Object message) {
+            writer.println("[TRACE] " + formatMessage(message));
+        }
+        
+        @Override
+        public void trace(Object originator, Object message, Throwable throwable) {
+            writer.println("[TRACE] " + formatMessage(message));
+            if (throwable != null) {
+                throwable.printStackTrace(writer);
+            }
+        }
+        
+        @Override
+        public void debug(Object originator, Object message) {
+            writer.println("[DEBUG] " + formatMessage(message));
+        }
+        
+        @Override
+        public void debug(Object originator, Object message, Throwable throwable) {
+            writer.println("[DEBUG] " + formatMessage(message));
+            if (throwable != null) {
+                throwable.printStackTrace(writer);
+            }
+        }
+        
+        @Override
+        public void info(Object originator, Object message) {
+            writer.println("[INFO] " + formatMessage(message));
+        }
+        
+        @Override
+        public void info(Object originator, Object message, Throwable throwable) {
+            writer.println("[INFO] " + formatMessage(message));
+            if (throwable != null) {
+                throwable.printStackTrace(writer);
+            }
+        }
+        
+        @Override
+        public void warn(Object originator, Object message) {
+            writer.println("[WARN] " + formatMessage(message));
+        }
+        
+        @Override
+        public void warn(Object originator, Object message, Throwable throwable) {
+            writer.println("[WARN] " + formatMessage(message));
+            if (throwable != null) {
+                throwable.printStackTrace(writer);
+            }
+        }
+        
+        @Override
+        public void error(Object originator, Object message) {
+            writer.println("[ERROR] " + formatMessage(message));
+        }
+        
+        @Override
+        public void error(Object originator, Object message, Throwable throwable) {
+            writer.println("[ERROR] " + formatMessage(message));
+            if (throwable != null) {
+                throwable.printStackTrace(writer);
+            }
         }
     }
 
