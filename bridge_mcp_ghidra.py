@@ -562,7 +562,7 @@ def run_ghidra_script(name: str, script: str) -> str:
         script: The source code for the script to run
 
     Returns:
-        Result of the script execution as a string or null if there is an error
+        Result of the script execution as a string, or an error message if execution fails.
     """
     params = {"script": script, "name": name}
     return safe_post("run_script", params)

@@ -74,7 +74,9 @@ public class GhidraAnalysisService {
         return java.util.stream.IntStream.range(0, 3)
             .mapToObj(attempt -> {
                 try {
-                    Thread.sleep(1000);
+                    if (attempt > 0) {
+                        Thread.sleep(1000);
+                    }
                     GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
                     return provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
                 } catch (Exception e) {
@@ -101,7 +103,7 @@ public class GhidraAnalysisService {
 
     private void cleanupScriptFile(String scriptName) {
         try {
-            // don't call this
+            // Delete the temporary script file after execution to avoid leaving orphaned files.
             ResourceFile scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
             if (scriptFile != null && scriptFile.exists()) {
                 scriptFile.delete();

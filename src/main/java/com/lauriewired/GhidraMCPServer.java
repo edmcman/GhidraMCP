@@ -264,7 +264,7 @@ public class GhidraMCPServer {
                 String name = params.get("name");
                 
                 String result = analysisService.runScript(name, script);
-                sendResponse(exchange, String.join("\n", result));
+                sendResponse(exchange, result);
             }
         });
 
