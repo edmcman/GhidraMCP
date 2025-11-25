@@ -4,6 +4,7 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.address.Address;
 import ghidra.util.task.TaskMonitor;
 import ghidra.app.services.DataTypeManagerService;
+import ghidra.app.script.GhidraState;
 import ghidra.framework.plugintool.PluginTool;
 
 import java.util.Optional;
@@ -55,6 +56,17 @@ public interface GhidraContext {
     }
 
     default Optional<PluginTool> getTool() {
+        return Optional.empty();
+    }
+
+    /**
+     * Gets the GhidraState for script execution.
+     * In GUI mode, this creates a state from the current tool and program.
+     * In headless mode, this returns the state from the parent script if available.
+     *
+     * @return Optional containing the GhidraState, or empty if not available
+     */
+    default Optional<GhidraState> getScriptState() {
         return Optional.empty();
     }
 }

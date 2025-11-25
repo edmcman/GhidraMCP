@@ -2,6 +2,7 @@
 // @category MCP
 
 import ghidra.app.script.GhidraScript;
+import ghidra.app.script.GhidraState;
 import ghidra.util.task.ConsoleTaskMonitor;
 import com.lauriewired.context.HeadlessGhidraContext;
 import com.lauriewired.GhidraAnalysisService;
@@ -13,7 +14,7 @@ public class HeadlessMCPServerScript extends GhidraScript {
     @Override
     public void run() throws Exception {
         Optional.ofNullable(currentProgram)
-            .map(program -> new HeadlessGhidraContext(program, new ConsoleTaskMonitor()))
+            .map(program -> new HeadlessGhidraContext(program, new ConsoleTaskMonitor(), state))
             .map(context -> {
                 int port = parsePortFromEnv().orElse(8080);
                 println("Starting GhidraMCP server for: " + currentProgram.getName());

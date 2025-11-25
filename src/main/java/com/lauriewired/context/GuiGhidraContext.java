@@ -4,6 +4,7 @@ import ghidra.framework.plugintool.PluginTool;
 import ghidra.app.services.ProgramManager;
 import ghidra.app.services.CodeViewerService;
 import ghidra.app.services.DataTypeManagerService;
+import ghidra.app.script.GhidraState;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.address.Address;
@@ -74,5 +75,17 @@ public class GuiGhidraContext implements GhidraContext {
     @Override
     public Optional<DataTypeManagerService> getDataTypeManagerService() {
         return Optional.ofNullable(tool.getService(DataTypeManagerService.class));
+    }
+
+    @Override
+    public Optional<GhidraState> getScriptState() {
+        // Create a GhidraState from the tool and current program
+        return getCurrentProgram().map(program -> {
+            Address currentAddress = getCurrentAddress().orElse(null);
+            ProgramLocation loc = (currentAddress != null)
+                    ? new ProgramLocation(program, currentAddress)
+                    : null;
+            return new GhidraState(tool, tool.getProject(), program, loc, null, null);
+        });
     }
 }

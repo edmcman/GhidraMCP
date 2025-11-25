@@ -112,14 +112,18 @@ public class GhidraAnalysisService {
     }
 
     private GhidraState getState() {
-        Program currentProgram = context.getCurrentProgram().orElse(null);
-        Address currentAddress = context.getCurrentAddress().orElse(null);
-        ProgramLocation loc = (currentProgram != null && currentAddress != null)
-                ? new ProgramLocation(currentProgram, currentAddress)
-                : null;
-        PluginTool tool = context.getTool().orElse(null);
-        Project project = tool != null ? tool.getProject() : null;
-        return new GhidraState(tool, project, currentProgram, loc, null, null);
+        // First try to get state from the context (works for both GUI and headless)
+        return context.getScriptState().orElseGet(() -> {
+            // Fallback: construct a minimal state
+            Program currentProgram = context.getCurrentProgram().orElse(null);
+            Address currentAddress = context.getCurrentAddress().orElse(null);
+            ProgramLocation loc = (currentProgram != null && currentAddress != null)
+                    ? new ProgramLocation(currentProgram, currentAddress)
+                    : null;
+            PluginTool tool = context.getTool().orElse(null);
+            Project project = tool != null ? tool.getProject() : null;
+            return new GhidraState(tool, project, currentProgram, loc, null, null);
+        });
     }
 
     public List<String> getAllFunctionNames(int offset, int limit) {
