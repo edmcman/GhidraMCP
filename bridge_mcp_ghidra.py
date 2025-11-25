@@ -17,6 +17,7 @@ import subprocess
 import time
 import signal
 import tempfile
+import atexit
 from urllib.parse import urljoin
 
 from mcp.server.fastmcp import FastMCP
@@ -553,6 +554,21 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: str = None) -> list
     return safe_get("strings", params)
 
 @mcp.tool()
+def run_ghidra_script(name: str, script: str) -> str:
+    """
+    Run a Ghidra script.  Use file I/O to output information. Do not use the console.
+
+    Args:
+        name: The name of the script file, including the extension (e.g., "MyScript.java" or "MyScript.py")
+        script: The source code for the script to run
+
+    Returns:
+        Error message if execution fails.
+    """
+    params = {"script": script, "name": name}
+    return safe_post("run_script", params)
+        
+@mcp.tool()
 def create_type_from_c_definition(c_definition: str) -> str:
     """
     Create a data type from its C definition string.
@@ -618,18 +634,19 @@ def cleanup_ghidra_processes():
     global current_ghidra_process, current_project_dir
     
     try:
-        if current_ghidra_process:
-            current_ghidra_process = None
+        killed = kill_existing_ghidra_processes()
+        if killed:
+            logger.info(f"Cleaned up {killed} headless process(es)")
         
         if current_project_dir and os.path.exists(current_project_dir):
             import shutil
             shutil.rmtree(current_project_dir, ignore_errors=True)
-            current_project_dir = None
-            
-        # Kill any remaining analyzeHeadless processes
-        kill_existing_ghidra_processes()
+        current_project_dir = None
+        current_ghidra_process = None
     except Exception as e:
         logger.error(f"Error during cleanup: {str(e)}")
+
+atexit.register(cleanup_ghidra_processes)
 
 def signal_handler(signum, frame):
     """Handle signals for graceful shutdown."""

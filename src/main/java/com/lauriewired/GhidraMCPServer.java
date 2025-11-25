@@ -256,6 +256,18 @@ public class GhidraMCPServer {
         // Additional advanced endpoints
         // =============================
 
+        // Script execution endpoint
+        server.createContext("/run_script", exchange -> {
+            if ("POST".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parsePostParams(exchange);
+                String script = params.get("script");
+                String name = params.get("name");
+                
+                String result = analysisService.runScript(name, script);
+                sendResponse(exchange, result);
+            }
+        });
+
         // Data export endpoint
         server.createContext("/export_functions", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {

@@ -9,7 +9,15 @@ import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
 import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
+import ghidra.app.script.*;
+import ghidra.framework.model.Project;
+import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.util.ProgramLocation;
+import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitor;
+import generic.jar.ResourceFile;
 import java.util.*;
+import java.io.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 import java.util.stream.Collectors;
@@ -27,6 +35,94 @@ public class GhidraAnalysisService {
 
     // Core Analysis Methods
     // =====================
+
+    /**
+     * Runs a Ghidra script by writing the provided source code to a script file, 
+     * instantiating and executing it, and returning its output.
+     * <p>
+     * The script is created in the user's script directory, loaded and executed with the current Ghidra state.
+     * After execution, the script file is deleted.
+     *
+     * @param scriptName   the name of the script file to create and execute (e.g., "MyScript.java")
+     * @param scriptSource the source code of the script to execute
+     * @return the output produced by the script, or an error message if execution fails
+     * @throws IOException if there is an error writing the script file (caught and returned as error message)
+     * @throws Exception   if there is an error during script instantiation or execution (caught and returned as error message)
+     */
+    public String runScript(String scriptName, String scriptSource) {
+        return createScriptFile(scriptName, scriptSource)
+            .flatMap(scriptFile -> loadScript(scriptFile))
+            .map(script -> executeScript(script, scriptName))
+            .orElse("Script execution failed");
+    }
+
+    private Optional<ResourceFile> createScriptFile(String scriptName, String scriptSource) {
+        try {
+            ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
+            File scriptFile = new File(scriptDir.getFile(false), scriptName);
+            try (FileWriter writer = new FileWriter(scriptFile)) {
+                writer.write(scriptSource);
+            }
+            return Optional.of(new ResourceFile(scriptFile));
+        } catch (IOException e) {
+            Msg.error(this, "Error writing script file: " + e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<GhidraScript> loadScript(ResourceFile scriptFile) {
+        return java.util.stream.IntStream.range(0, 3)
+            .mapToObj(attempt -> {
+                try {
+                    if (attempt > 0) {
+                        Thread.sleep(1000);
+                    }
+                    GhidraScriptProvider provider = GhidraScriptUtil.getProvider(scriptFile);
+                    return provider.getScriptInstance(scriptFile, new PrintWriter(System.err));
+                } catch (Exception e) {
+                    Msg.error(this, "Script load attempt " + (attempt + 1) + " failed");
+                }
+                return null;
+            })
+            .filter(Objects::nonNull)
+            .findFirst();
+    }
+
+    private String executeScript(GhidraScript script, String scriptName) {
+        try {
+            StringWriter stringWriter = new StringWriter();
+            PrintWriter outWriter = new PrintWriter(stringWriter);
+            script.execute(getState(), TaskMonitor.DUMMY, outWriter);
+            return stringWriter.toString();
+        } catch (Exception e) {
+            return "Error running script: " + e.getMessage();
+        } finally {
+            cleanupScriptFile(scriptName);
+        }
+    }
+
+    private void cleanupScriptFile(String scriptName) {
+        try {
+            // Delete the temporary script file after execution to avoid leaving orphaned files.
+            ResourceFile scriptFile = GhidraScriptUtil.findScriptByName(scriptName);
+            if (scriptFile != null && scriptFile.exists()) {
+                scriptFile.delete();
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error cleaning up script file: " + e.getMessage());
+        }
+    }
+
+    private GhidraState getState() {
+        Program currentProgram = context.getCurrentProgram().orElse(null);
+        Address currentAddress = context.getCurrentAddress().orElse(null);
+        ProgramLocation loc = (currentProgram != null && currentAddress != null)
+                ? new ProgramLocation(currentProgram, currentAddress)
+                : null;
+        PluginTool tool = context.getTool().orElse(null);
+        Project project = tool != null ? tool.getProject() : null;
+        return new GhidraState(tool, project, currentProgram, loc, null, null);
+    }
 
     public List<String> getAllFunctionNames(int offset, int limit) {
         return context.<List<String>>withProgram(program -> 

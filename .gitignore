@@ -1,6 +1,12 @@
 # Maven target directory
 /target/
 
+# Gradle build directories
+/build/
+.gradle/
+/dist/
+/gradle/wrapper
+
 # Compiled class files
 *.class
 
@@ -40,6 +46,10 @@ bin/
 !/.mvn/wrapper/maven-wrapper.jar
 mvnw
 mvnw.cmd
+
+# Gradle Wrapper
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
 # Environment files
 .env
