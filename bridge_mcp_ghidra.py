@@ -21,6 +21,7 @@ import atexit
 from urllib.parse import urljoin
 
 from mcp.server.fastmcp import FastMCP
+from typing import Optional
 
 DEFAULT_GHIDRA_SERVER = "http://127.0.0.1:8080/"
 
@@ -35,7 +36,7 @@ ghidra_server_url = DEFAULT_GHIDRA_SERVER
 current_ghidra_process = None
 current_project_dir = None
 
-def safe_get(endpoint: str, params: dict = None) -> list:
+def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
     """
     Perform a GET request with optional query parameters.
     """
@@ -68,6 +69,17 @@ def safe_post(endpoint: str, data: dict | str) -> str:
             return f"Error {response.status_code}: {response.text.strip()}"
     except Exception as e:
         return f"Request failed: {str(e)}"
+
+
+def safe_get_json(endpoint: str) -> dict | None:
+    """GET an endpoint and parse JSON; return None on error."""
+    try:
+        if (r := requests.get(urljoin(ghidra_server_url, endpoint), timeout=5)).ok:
+            r.encoding = 'utf-8'
+            return r.json()
+    except:
+        pass
+    return None
 
 def kill_existing_ghidra_processes():
     """Kill any existing analyzeHeadless processes using global process tracking."""
@@ -275,11 +287,11 @@ def close_ghidra_headless() -> str:
 
 @mcp.tool()
 def get_ghidra_status() -> str:
-    """
-    Get the status of the Ghidra HTTP server and any headless processes.
-    
-    Returns:
-        Status information about the Ghidra server and headless processes (if applicable)
+    """Get status from Ghidra, including headed/headless mode, current program and function.
+
+    The function prefers the server's `/status` JSON endpoint for authoritative
+    information. If `/status` is unavailable and `--enable-headless-tools` is
+    enabled, it falls back to checking the bridge's tracked analyzeHeadless process.
     """
     global current_ghidra_process
     
@@ -294,17 +306,25 @@ def get_ghidra_status() -> str:
             server_status = f"HTTP server not reachable at {ghidra_server_url}"
         
         status_lines.append(f"Server: {server_status}")
-        
-        # Check headless process status if headless tools are enabled
-        if headless_tools_enabled:
-            # Check if we have a tracked process
-            process_status = "No tracked process"
+        # Prefer server-reported status
+        sj = safe_get_json("status")
+        if sj and (m := sj.get("mode")):
+            status_lines.append(f"Mode: {m}")
+            if (pn := sj.get("programName")):
+                status_lines.append(f"Program: {pn}")
+            elif sj.get("programLoaded") is not None:
+                status_lines.append(f"Program loaded: {sj.get('programLoaded')}")
+            if (ca := sj.get("currentAddress")):
+                status_lines.append(f"Current address: {ca}")
+        elif headless_tools_enabled:
+            # Fallback to process tracking
             if current_ghidra_process:
                 if current_ghidra_process.poll() is None:
                     process_status = f"Process running (PID: {current_ghidra_process.pid})"
                 else:
                     process_status = f"Process exited (return code: {current_ghidra_process.returncode})"
-            
+            else:
+                process_status = "No tracked process"
             status_lines.extend([
                 f"Tracked process: {process_status}",
                 f"Project directory: {current_project_dir or 'None'}",
@@ -536,7 +556,7 @@ def get_function_xrefs(name: str, offset: int = 0, limit: int = 100) -> list:
     return safe_get("function_xrefs", {"name": name, "offset": offset, "limit": limit})
 
 @mcp.tool()
-def list_strings(offset: int = 0, limit: int = 2000, filter: str = None) -> list:
+def list_strings(offset: int = 0, limit: int = 2000, filter: Optional[str] = None) -> list:
     """
     List all defined strings in the program with their addresses.
     
@@ -548,8 +568,8 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: str = None) -> list
     Returns:
         List of strings with their addresses
     """
-    params = {"offset": offset, "limit": limit}
-    if filter:
+    params = {"offset": str(offset), "limit": str(limit)}
+    if filter is not None:
         params["filter"] = filter
     return safe_get("strings", params)
 

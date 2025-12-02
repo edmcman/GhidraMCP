@@ -11,8 +11,12 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.List;
 import java.util.Map;
+// Ghidra imports for program name
+import ghidra.program.model.listing.Program;
+import ghidra.framework.model.DomainFile;
 
 /**
  * HTTP server wrapper that exposes GhidraAnalysisService functionality via REST endpoints.
@@ -197,6 +201,26 @@ public class GhidraMCPServer {
 
         server.createContext("/get_current_function", exchange -> {
             sendResponse(exchange, analysisService.getCurrentFunction());
+        });
+
+        // Server status endpoint - provides mode (Headed vs Headless), GUI flag and program status
+        server.createContext("/status", exchange -> {
+            Map<String, Object> response = new HashMap<>();
+            boolean gui = context.isGuiMode();
+            response.put("mode", gui ? "Headed (GUI)" : "Headless");
+            response.put("gui", gui);
+
+            // Provide the loaded program name (if any) instead of just a boolean
+            String programName = context.getCurrentProgram()
+                .map(program -> Optional.ofNullable(program.getDomainFile())
+                    .map(DomainFile::getName)
+                    .orElse(program.getName()))
+                .orElse(null);
+
+            response.put("programName", programName);
+            response.put("programLoaded", programName != null);
+            response.put("currentAddress", analysisService.getCurrentAddress());
+            sendJsonResponse(exchange, response);
         });
 
         server.createContext("/list_functions", exchange -> {
