@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.Optional;
 import java.util.List;
 import java.util.Map;
+import io.vavr.control.Either;
 // Ghidra imports for program name
 import ghidra.program.model.listing.Program;
 import ghidra.framework.model.DomainFile;
@@ -113,16 +114,16 @@ public class GhidraMCPServer {
         // Function renaming endpoints
         server.createContext("/renameFunction", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            boolean success = analysisService.renameFunction(
+            Either<String, String> result = analysisService.renameFunction(
                 params.get("oldName"), params.get("newName"));
-            sendResponse(exchange, success ? "Renamed successfully" : "Rename failed");
+            sendResponse(exchange, result.fold(err -> err, ok -> ok));
         });
 
         server.createContext("/rename_function_by_address", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            boolean success = analysisService.renameFunctionByAddress(
+            Either<String, String> result = analysisService.renameFunctionByAddress(
                 params.get("function_address"), params.get("new_name"));
-            sendResponse(exchange, success ? "Renamed successfully" : "Rename failed");
+            sendResponse(exchange, result.fold(err -> err, ok -> ok));
         });
 
         // Listing endpoints
@@ -184,9 +185,9 @@ public class GhidraMCPServer {
 
         server.createContext("/renameData", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            boolean success = analysisService.renameDataAtAddress(
+            Either<String, String> result = analysisService.renameDataAtAddress(
                 params.get("address"), params.get("newName"));
-            sendResponse(exchange, success ? "Data renamed successfully" : "Failed to rename data");
+            sendResponse(exchange, result.fold(err -> err, ok -> ok));
         });
 
         server.createContext("/get_function_by_address", exchange -> {
@@ -264,8 +265,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getFunctionXrefs(functionName, offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getFunctionXrefs(functionName, offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/strings", exchange -> {

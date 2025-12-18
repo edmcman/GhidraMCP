@@ -156,7 +156,7 @@ public class GhidraAnalysisService {
         return context.<String>withProgram(program -> 
             findFunctionByName(program, name)
                 .map(func -> decompileFunction(program, func))
-                .orElse("Function not found")
+                .fold(err -> "Function not found: " + err, output -> output)
         ).orElse("No program loaded");
     }
 
@@ -165,35 +165,49 @@ public class GhidraAnalysisService {
             parseAddress(program, addressStr)
                 .flatMap(addr -> findFunctionByAddress(program, addr))
                 .map(func -> decompileFunction(program, func))
-                .orElse("Function not found at address")
+                .fold(err -> "Function not found at address: " + err, output -> output)
         ).orElse("No program loaded");
     }
 
-    public boolean renameFunction(String oldName, String newName) {
-        return context.<Boolean>withProgram(program -> {
+    public Either<String, String> renameFunction(String oldName, String newName) {
+        return context.<Either<String, String>>withProgram(program -> {
             int tx = program.startTransaction("Rename function");
             try {
                 return findFunctionByName(program, oldName)
-                    .map(func -> tryRename(func, newName))
-                    .orElse(false);
+                    .flatMap(func -> {
+                        try {
+                            boolean ok = tryRename(func, newName);
+                            return ok ? Either.right("Renamed successfully") : Either.left("Failed to rename function");
+                        } catch (Exception e) {
+                            return Either.left("Failed to rename function: " + e.getMessage());
+                        }
+                    })
+                    .orElse(Either.left("Function '" + oldName + "' not found"));
             } finally {
                 program.endTransaction(tx, true);
             }
-        }).orElse(false);
+        }).orElse(Either.left("No program loaded"));
     }
 
-    public boolean renameFunctionByAddress(String addressStr, String newName) {
-        return context.<Boolean>withProgram(program -> {
+    public Either<String, String> renameFunctionByAddress(String addressStr, String newName) {
+        return context.<Either<String, String>>withProgram(program -> {
             int tx = program.startTransaction("Rename function by address");
             try {
                 return parseAddress(program, addressStr)
                     .flatMap(addr -> findFunctionByAddress(program, addr))
-                    .map(func -> tryRename(func, newName))
-                    .orElse(false);
+                    .flatMap(func -> {
+                        try {
+                            boolean ok = tryRename(func, newName);
+                            return ok ? Either.right("Renamed successfully") : Either.left("Failed to rename function");
+                        } catch (Exception e) {
+                            return Either.left("Failed to rename function: " + e.getMessage());
+                        }
+                    })
+                    .orElse(Either.left("No function at address: " + addressStr));
             } finally {
                 program.endTransaction(tx, true);
             }
-        }).orElse(false);
+        }).orElse(Either.left("No program loaded"));
     }
 
     public List<String> listSegments(int offset, int limit) {
@@ -270,7 +284,7 @@ public class GhidraAnalysisService {
             parseAddress(program, addressStr)
                 .flatMap(addr -> findFunctionByAddress(program, addr))
                 .map(func -> String.format("Function: %s @ %s", func.getName(), func.getEntryPoint()))
-                .orElse("No function found at address")
+                .fold(err -> "No function found at address: " + err, output -> output)
         ).orElse("No program loaded");
     }
 
@@ -279,7 +293,7 @@ public class GhidraAnalysisService {
             parseAddress(program, addressStr)
                 .flatMap(addr -> findFunctionByAddress(program, addr))
                 .map(func -> disassembleFunctionInstructions(program, func))
-                .orElse("Function not found at address")
+                .fold(err -> "Function not found at address: " + err, output -> output)
         ).orElse("No program loaded");
     }
 
@@ -305,35 +319,34 @@ public class GhidraAnalysisService {
         }).orElse(Collections.singletonList("No program loaded"));
     }
 
-    public boolean renameDataAtAddress(String addressStr, String newName) {
-        return context.<Boolean>withProgram(program -> {
+    public Either<String, String> renameDataAtAddress(String addressStr, String newName) {
+        return context.<Either<String, String>>withProgram(program -> {
             int tx = program.startTransaction("Rename data");
             try {
                 return parseAddress(program, addressStr)
-                    .map(addr -> {
-                        Data data = program.getListing().getDefinedDataAt(addr);
-                        if (data != null) {
-                            SymbolTable symTable = program.getSymbolTable();
-                            Symbol symbol = symTable.getPrimarySymbol(addr);
-                            try {
+                    .flatMap(addr -> {
+                        try {
+                            Data data = program.getListing().getDefinedDataAt(addr);
+                            if (data != null) {
+                                SymbolTable symTable = program.getSymbolTable();
+                                Symbol symbol = symTable.getPrimarySymbol(addr);
                                 if (symbol != null) {
                                     symbol.setName(newName, SourceType.USER_DEFINED);
                                 } else {
                                     symTable.createLabel(addr, newName, SourceType.USER_DEFINED);
                                 }
-                                return true;
-                            } catch (Exception e) {
-                                context.showError("Error renaming data: " + e.getMessage());
-                                return false;
+                                return Either.<String, String>right("Data renamed successfully");
                             }
+                            return Either.left("No data at address: " + addr);
+                        } catch (Exception e) {
+                            return Either.left("Error renaming data: " + e.getMessage());
                         }
-                        return false;
                     })
-                    .orElse(false);
+                    .orElse(Either.left("Invalid address: " + addressStr));
             } finally {
                 program.endTransaction(tx, true);
             }
-        }).orElse(false);
+        }).orElse(Either.left("No program loaded"));
     }
 
     // Current Location Operations (GUI-specific)
@@ -373,7 +386,7 @@ public class GhidraAnalysisService {
                     
                     return refs.stream().skip(offset).limit(limit).collect(Collectors.toList());
                 })
-                .orElse(Collections.singletonList("Invalid address: " + addressStr))
+                .fold(err -> Collections.singletonList("Invalid address: " + addressStr + ": " + err), list -> list)
         ).orElse(Collections.singletonList("No program loaded"));
     }
 
@@ -396,12 +409,12 @@ public class GhidraAnalysisService {
                     
                     return refs.stream().skip(offset).limit(limit).collect(Collectors.toList());
                 })
-                .orElse(Collections.singletonList("Invalid address: " + addressStr))
+                .fold(err -> Collections.singletonList("Invalid address: " + addressStr + ": " + err), list -> list)
         ).orElse(Collections.singletonList("No program loaded"));
     }
 
-    public List<String> getFunctionXrefs(String functionName, int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
+    public Either<String, List<String>> getFunctionXrefs(String functionName, int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
             findFunctionByName(program, functionName)
                 .map(func -> {
                     List<String> refs = new ArrayList<>();
@@ -425,8 +438,7 @@ public class GhidraAnalysisService {
                     
                     return refs.stream().skip(offset).limit(limit).collect(Collectors.toList());
                 })
-                .orElse(Collections.singletonList("Function not found: " + functionName))
-        ).orElse(Collections.singletonList("No program loaded"));
+        ).orElse(Either.left("No program loaded"));
     }
 
     // String Analysis
@@ -493,7 +505,7 @@ public class GhidraAnalysisService {
                             return false;
                         }
                     })
-                    .orElse(false);
+                    .fold(err -> { context.showError(err); return false; }, r -> r);
             } finally {
                 program.endTransaction(tx, true);
             }
@@ -565,7 +577,7 @@ public class GhidraAnalysisService {
                         })
                         .orElse("No local symbol map available for function " + functionName);
                 })
-                .orElse("Function '" + functionName + "' not found")
+                .fold(err -> "Function '" + functionName + "' not found: " + err, s -> s)
         ).orElse("No program loaded");
     }
     
@@ -638,7 +650,7 @@ public class GhidraAnalysisService {
                             })
                             .orElse("No high function available for " + functionAddress);
                     })
-                    .orElse("No function at address: " + functionAddress);
+                    .fold(err -> "No function at address: " + err, s -> s);
                 
             } catch (Exception e) {
                 return "Error setting variable type: " + e.getMessage();
@@ -718,7 +730,7 @@ public class GhidraAnalysisService {
                         program.endTransaction(tx, success);
                     }
                 })
-                .orElse("Function not found at address: " + functionAddress)
+                .fold(err -> "Function not found at address: " + err, s -> s)
         ).orElse("No program loaded");
     }
 
@@ -775,29 +787,30 @@ public class GhidraAnalysisService {
 
     public String exportData(String addressStr, int length) {
         return context.<String>withProgram(program -> {
-            try {
-                Address addr = parseAddress(program, addressStr)
-                    .orElseThrow(() -> new IllegalArgumentException("Invalid address: " + addressStr));
-                
-                if (length <= 0 || length > 1024 * 1024) { // Limit to 1MB for safety
-                    return "Error: Invalid length (must be 1-1048576): " + length;
-                }
-                
-                byte[] bytes = new byte[length];
-                int bytesRead = program.getMemory().getBytes(addr, bytes);
-                
-                if (bytesRead != length) {
-                    return "Error: Could only read " + bytesRead + " of " + length + " bytes";
-                }
-                
-                // Convert to hex string using functional approach
-                return java.util.stream.IntStream.range(0, bytes.length)
-                    .mapToObj(i -> String.format("%02x", bytes[i] & 0xFF))
-                    .collect(Collectors.joining());
-                
-            } catch (Exception e) {
-                return "Error: " + e.getMessage();
-            }
+            return parseAddress(program, addressStr)
+                .fold(err -> "Error: " + err,
+                    addr -> {
+                        try {
+                            if (length <= 0 || length > 1024 * 1024) { // Limit to 1MB for safety
+                                return "Error: Invalid length (must be 1-1048576): " + length;
+                            }
+
+                            byte[] bytes = new byte[length];
+                            int bytesRead = program.getMemory().getBytes(addr, bytes);
+
+                            if (bytesRead != length) {
+                                return "Error: Could only read " + bytesRead + " of " + length + " bytes";
+                            }
+
+                            // Convert to hex string using functional approach
+                            return java.util.stream.IntStream.range(0, bytes.length)
+                                .mapToObj(i -> String.format("%02x", bytes[i] & 0xFF))
+                                .collect(Collectors.joining());
+                        } catch (Exception e) {
+                            return "Error: " + e.getMessage();
+                        }
+                    }
+                );
         }).orElse("Error: No program loaded");
     }
 
@@ -809,22 +822,24 @@ public class GhidraAnalysisService {
             program.getFunctionManager().getFunctions(true).spliterator(), false);
     }
 
-    private Optional<Function> findFunctionByName(Program program, String name) {
+    private Either<String, Function> findFunctionByName(Program program, String name) {
         return streamFunctions(program)
             .filter(func -> func.getName().equals(name))
-            .findFirst();
+            .findFirst()
+            .map(Either::<String, Function>right)
+            .orElse(Either.left("Function '" + name + "' not found"));
     }
 
-    private Optional<Function> findFunctionByAddress(Program program, Address address) {
-        return Optional.ofNullable(program.getFunctionManager().getFunctionAt(address));
+    private Either<String, Function> findFunctionByAddress(Program program, Address address) {
+        Function func = program.getFunctionManager().getFunctionAt(address);
+        return func != null ? Either.right(func) : Either.left("No function at address: " + address);
     }
 
-    private Optional<Address> parseAddress(Program program, String addressStr) {
+    private Either<String, Address> parseAddress(Program program, String addressStr) {
         try {
-            return Optional.of(program.getAddressFactory().getAddress(addressStr));
+            return Either.right(program.getAddressFactory().getAddress(addressStr));
         } catch (Exception e) {
-            context.showError("Invalid address format: " + addressStr);
-            return Optional.empty();
+            return Either.left("Invalid address format: " + addressStr + " - " + e.getMessage());
         }
     }
 
