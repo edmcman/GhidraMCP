@@ -137,8 +137,8 @@ public class GhidraAnalysisService {
         ).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> getAllClassNames(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> {
+    public Either<String, List<String>> getAllClassNames(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> {
             Set<String> classNames = new HashSet<>();
             for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
                 Namespace ns = symbol.getParentNamespace();
@@ -146,18 +146,19 @@ public class GhidraAnalysisService {
                     classNames.add(ns.getName());
                 }
             }
-            return new ArrayList<>(classNames).stream()
+            List<String> result = new ArrayList<>(classNames).stream()
                 .sorted()
                 .skip(offset)
                 .limit(limit)
                 .collect(Collectors.toList());
-        }).orElse(Collections.singletonList("No program loaded"));
+            return Either.right(result);
+        }).orElse(Either.left("No program loaded"));
     }
 
     public String decompileFunctionByName(String name) {
         return context.<String>withProgram(program -> 
             findFunctionByName(program, name)
-                .map(func -> decompileFunction(program, func))
+                .flatMap(func -> decompileFunction(program, func))
                 .fold(err -> "Function not found: " + err, output -> output)
         ).orElse("No program loaded");
     }
@@ -166,7 +167,7 @@ public class GhidraAnalysisService {
         return context.<String>withProgram(program -> 
             parseAddress(program, addressStr)
                 .flatMap(addr -> findFunctionByAddress(program, addr))
-                .map(func -> decompileFunction(program, func))
+                .flatMap(func -> decompileFunction(program, func))
                 .fold(err -> "Function not found at address: " + err, output -> output)
         ).orElse("No program loaded");
     }
@@ -268,15 +269,17 @@ public class GhidraAnalysisService {
         }).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> searchFunctionsByName(String searchTerm, int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            streamFunctions(program)
-                .filter(func -> func.getName().toLowerCase().contains(searchTerm.toLowerCase()))
-                .map(Function::getName)
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> searchFunctionsByName(String searchTerm, int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                streamFunctions(program)
+                    .filter(func -> func.getName().toLowerCase().contains(searchTerm.toLowerCase()))
+                    .map(Function::getName)
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
     public Either<String, List<String>> listFunctions(int offset, int limit) {
@@ -538,64 +541,61 @@ public class GhidraAnalysisService {
     public String renameVariableInFunction(String functionName, String oldName, String newName) {
         return context.<String>withProgram(program -> 
             findFunctionByName(program, functionName)
-                .map(func -> {
-                    // Decompile function to access high function
+                .flatMap(func -> {
                     DecompInterface decomp = new DecompInterface();
                     decomp.openProgram(program);
                     DecompileResults results = decomp.decompileFunction(func, 30, context.getTaskMonitor());
-                    
+
                     if (results == null || !results.decompileCompleted()) {
-                        return "Decompilation failed for function " + functionName;
+                        return Either.left("Decompilation failed for function " + functionName);
                     }
-                    
-                    return Optional.ofNullable(results.getHighFunction())
-                        .flatMap(highFunction -> Optional.ofNullable(highFunction.getLocalSymbolMap()))
-                        .map(localSymbolMap -> {
-                            // Check if new name already exists
-                            boolean newNameExists = StreamSupport.stream(
-                                java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
-                                .anyMatch(symbol -> symbol.getName().equals(newName));
-                                
-                            if (newNameExists) {
-                                return "Error: A variable with name '" + newName + "' already exists in this function";
+
+                    ghidra.program.model.pcode.HighFunction hf = results.getHighFunction();
+                    if (hf == null || hf.getLocalSymbolMap() == null) {
+                        return Either.left("No local symbol map available for function " + functionName);
+                    }
+
+                    ghidra.program.model.pcode.LocalSymbolMap localSymbolMap = hf.getLocalSymbolMap();
+
+                    boolean newNameExists = StreamSupport.stream(
+                        java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
+                        .anyMatch(symbol -> symbol.getName().equals(newName));
+
+                    if (newNameExists) {
+                        return Either.left("Error: A variable with name '" + newName + "' already exists in this function");
+                    }
+
+                    return StreamSupport.stream(
+                        java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
+                        .filter(symbol -> symbol.getName().equals(oldName))
+                        .findFirst()
+                        .map(highSymbol -> {
+                            int tx = program.startTransaction("Rename variable");
+                            try {
+                                boolean commitRequired = checkFullCommit(highSymbol, hf);
+
+                                if (commitRequired) {
+                                    ghidra.program.model.pcode.HighFunctionDBUtil.commitParamsToDatabase(
+                                        hf, false,
+                                        ghidra.program.model.pcode.HighFunctionDBUtil.ReturnCommitOption.NO_COMMIT,
+                                        func.getSignatureSource());
+                                }
+
+                                ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
+                                    highSymbol,
+                                    newName,
+                                    null,  // Keep existing data type
+                                    SourceType.USER_DEFINED
+                                );
+
+                                return Either.<String, String>right("Variable renamed successfully");
+                            } catch (Exception e) {
+                                return Either.<String, String>left("Failed to rename variable: " + e.getMessage());
+                            } finally {
+                                program.endTransaction(tx, true);
                             }
-                            
-                            // Find the symbol to rename
-                            return StreamSupport.stream(
-                                java.util.Spliterators.spliteratorUnknownSize(localSymbolMap.getSymbols(), java.util.Spliterator.ORDERED), false)
-                                .filter(symbol -> symbol.getName().equals(oldName))
-                                .findFirst()
-                                .map(highSymbol -> {
-                                    int tx = program.startTransaction("Rename variable");
-                                    try {
-                                        // Check if full commit is required (from the example)
-                                        boolean commitRequired = checkFullCommit(highSymbol, results.getHighFunction());
-                                        
-                                        if (commitRequired) {
-                                            ghidra.program.model.pcode.HighFunctionDBUtil.commitParamsToDatabase(
-                                                results.getHighFunction(), false,
-                                                ghidra.program.model.pcode.HighFunctionDBUtil.ReturnCommitOption.NO_COMMIT,
-                                                func.getSignatureSource());
-                                        }
-                                        
-                                        // Update the variable name using HighFunctionDBUtil
-                                        ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
-                                            highSymbol,
-                                            newName,
-                                            null,  // Keep existing data type
-                                            SourceType.USER_DEFINED
-                                        );
-                                        
-                                        return "Variable renamed successfully";
-                                    } catch (Exception e) {
-                                        return "Failed to rename variable: " + e.getMessage();
-                                    } finally {
-                                        program.endTransaction(tx, true);
-                                    }
-                                })
-                                .orElse("Variable '" + oldName + "' not found in function '" + functionName + "'");
                         })
-                        .orElse("No local symbol map available for function " + functionName);
+                        .orElse(Either.left("Variable '" + oldName + "' not found in function '" + functionName + "'"));
                 })
                 .fold(err -> "Function '" + functionName + "' not found: " + err, s -> s)
         ).orElse("No program loaded");
@@ -632,46 +632,42 @@ public class GhidraAnalysisService {
             try {
                 return parseAddress(program, functionAddress)
                     .flatMap(addr -> findFunctionByAddress(program, addr))
-                    .map(func -> {
+                    .flatMap(func -> {
                         // Decompile function to get high function
                         DecompInterface decomp = new DecompInterface();
                         decomp.openProgram(program);
                         DecompileResults results = decomp.decompileFunction(func, 30, context.getTaskMonitor());
-                        
+
                         if (results == null || !results.decompileCompleted()) {
-                            return "Decompilation failed for function at " + functionAddress;
+                            return Either.left("Decompilation failed for function at " + functionAddress);
                         }
-                        
-                        return Optional.ofNullable(results.getHighFunction())
-                            .map(highFunction -> {
-                                DataTypeManager dtm = program.getDataTypeManager();
-                                
-                                ghidra.program.model.pcode.HighSymbol symbol = findSymbolByName(highFunction, variableName);
-                                if (symbol == null) {
-                                    return "Variable '" + variableName + "' not found in function";
-                                }
-                                
-                                return resolveDataType(dtm, newType)
-                                    .map(dataType -> {
-                                        try {
-                                            // Update the variable type using HighFunctionDBUtil
-                                            ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
-                                                symbol,
-                                                symbol.getName(),
-                                                dataType,
-                                                SourceType.USER_DEFINED
-                                            );
-                                            return "Variable type set successfully to " + dataType.getName();
-                                        } catch (Exception e) {
-                                            throw new RuntimeException("Failed to update variable: " + e.getMessage(), e);
-                                        }
-                                    })
-                                    .orElse("Could not resolve data type: " + newType);
-                            })
-                            .orElse("No high function available for " + functionAddress);
+
+                        ghidra.program.model.pcode.HighFunction highFunction = results.getHighFunction();
+                        if (highFunction == null) {
+                            return Either.left("No high function available for " + functionAddress);
+                        }
+
+                        DataTypeManager dtm = program.getDataTypeManager();
+
+                        return findSymbolByName(highFunction, variableName)
+                            .flatMap(symbol -> resolveDataType(dtm, newType)
+                                .flatMap(dataType -> {
+                                    try {
+                                        ghidra.program.model.pcode.HighFunctionDBUtil.updateDBVariable(
+                                            symbol,
+                                            symbol.getName(),
+                                            dataType,
+                                            SourceType.USER_DEFINED
+                                        );
+                                        return Either.<String, String>right("Variable type set successfully to " + dataType.getName());
+                                    } catch (Exception e) {
+                                        return Either.<String, String>left("Failed to update variable: " + e.getMessage());
+                                    }
+                                })
+                            );
                     })
                     .fold(err -> "No function at address: " + err, s -> s);
-                
+
             } catch (Exception e) {
                 return "Error setting variable type: " + e.getMessage();
             } finally {
@@ -680,32 +676,40 @@ public class GhidraAnalysisService {
         }).orElse("No program loaded");
     }
     
-    private ghidra.program.model.pcode.HighSymbol findSymbolByName(ghidra.program.model.pcode.HighFunction highFunction, String variableName) {
+    private Either<String, ghidra.program.model.pcode.HighSymbol> findSymbolByName(ghidra.program.model.pcode.HighFunction highFunction, String variableName) {
         java.util.Iterator<ghidra.program.model.pcode.HighSymbol> symbols = highFunction.getLocalSymbolMap().getSymbols();
         return StreamSupport.stream(
             java.util.Spliterators.spliteratorUnknownSize(symbols, java.util.Spliterator.ORDERED), false)
             .filter(symbol -> symbol.getName().equals(variableName))
             .findFirst()
-            .orElse(null);
+            .map(Either::<String, ghidra.program.model.pcode.HighSymbol>right)
+            .orElse(Either.left("Variable '" + variableName + "' not found"));
     }
     
-    private Optional<DataType> resolveDataType(DataTypeManager dtm, String typeName) {
+    private Either<String, DataType> resolveDataType(DataTypeManager dtm, String typeName) {
         try {
             // Use Ghidra's built-in C parser - handles pointers, built-ins, and complex types
             ghidra.app.util.cparser.C.CParser parser = new ghidra.app.util.cparser.C.CParser(dtm);
             DataType parsedType = parser.parse(typeName);
-            return Optional.ofNullable(parsedType);
-        } catch (Exception e) {
-            // Fallback using functional approach
-            Optional<DataType> directType = Optional.ofNullable(dtm.getDataType("/" + typeName));
-            if (directType.isPresent()) {
-                return directType;
+            if (parsedType != null) {
+                return Either.right(parsedType);
             }
-            return StreamSupport.stream(
-                java.util.Spliterators.spliteratorUnknownSize(dtm.getAllDataTypes(), java.util.Spliterator.ORDERED), false)
-                .filter(dt -> dt.getName().equalsIgnoreCase(typeName))
-                .findFirst();
+        } catch (Exception e) {
+            // fall through to fallback logic below
         }
+
+        // Fallback using functional approach
+        DataType direct = dtm.getDataType("/" + typeName);
+        if (direct != null) {
+            return Either.right(direct);
+        }
+
+        return StreamSupport.stream(
+            java.util.Spliterators.spliteratorUnknownSize(dtm.getAllDataTypes(), java.util.Spliterator.ORDERED), false)
+            .filter(dt -> dt.getName().equalsIgnoreCase(typeName))
+            .findFirst()
+            .map(Either::<String, DataType>right)
+            .orElse(Either.left("Could not resolve data type: " + typeName));
     }
 
     // Function Prototype Operations
@@ -863,14 +867,22 @@ public class GhidraAnalysisService {
         }
     }
 
-    private String decompileFunction(Program program, Function function) {
+    private Either<String, String> decompileFunction(Program program, Function function) {
         DecompInterface decomp = new DecompInterface();
         decomp.openProgram(program);
         
-        return Optional.of(decomp.decompileFunction(function, 30, context.getTaskMonitor()))
-            .filter(DecompileResults::decompileCompleted)
-            .map(result -> result.getDecompiledFunction().getC())
-            .orElse("Decompilation failed");
+        DecompileResults results = decomp.decompileFunction(function, 30, context.getTaskMonitor());
+        if (results == null) {
+            return Either.left("Decompilation returned null");
+        }
+        if (!results.decompileCompleted()) {
+            return Either.left("Decompilation failed");
+        }
+        try {
+            return Either.right(results.getDecompiledFunction().getC());
+        } catch (Exception e) {
+            return Either.left("Error extracting decompiled C: " + e.getMessage());
+        }
     }
 
     private boolean tryRename(Function function, String newName) {

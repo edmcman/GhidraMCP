@@ -94,8 +94,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getAllClassNames(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getAllClassNames(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         // Decompilation endpoints
@@ -169,8 +169,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.searchFunctionsByName(searchTerm, offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.searchFunctionsByName(searchTerm, offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         // Additional endpoints that were missing
