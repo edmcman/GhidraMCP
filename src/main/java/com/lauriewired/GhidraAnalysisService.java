@@ -125,14 +125,16 @@ public class GhidraAnalysisService {
         return new GhidraState(tool, project, currentProgram, loc, null, null);
     }
 
-    public List<String> getAllFunctionNames(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            streamFunctions(program)
-                .map(Function::getName)
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> getAllFunctionNames(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                streamFunctions(program)
+                    .map(Function::getName)
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
     public List<String> getAllClassNames(int offset, int limit) {
@@ -210,39 +212,45 @@ public class GhidraAnalysisService {
         }).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> listSegments(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            Arrays.stream(program.getMemory().getBlocks())
-                .map(block -> String.format("%s: %s - %s", block.getName(), block.getStart(), block.getEnd()))
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> listSegments(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                Arrays.stream(program.getMemory().getBlocks())
+                    .map(block -> String.format("%s: %s - %s", block.getName(), block.getStart(), block.getEnd()))
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> listImports(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            StreamSupport.stream(program.getSymbolTable().getExternalSymbols().spliterator(), false)
-                .map(symbol -> symbol.getName() + " -> " + symbol.getAddress())
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> listImports(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                StreamSupport.stream(program.getSymbolTable().getExternalSymbols().spliterator(), false)
+                    .map(symbol -> symbol.getName() + " -> " + symbol.getAddress())
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> listExports(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            StreamSupport.stream(program.getSymbolTable().getAllSymbols(true).spliterator(), false)
-                .filter(Symbol::isExternalEntryPoint)
-                .map(symbol -> symbol.getName() + " -> " + symbol.getAddress())
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> listExports(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                StreamSupport.stream(program.getSymbolTable().getAllSymbols(true).spliterator(), false)
+                    .filter(Symbol::isExternalEntryPoint)
+                    .map(symbol -> symbol.getName() + " -> " + symbol.getAddress())
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> listNamespaces(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> {
+    public Either<String, List<String>> listNamespaces(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> {
             Set<String> namespaces = new HashSet<>();
             for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
                 Namespace ns = symbol.getParentNamespace();
@@ -250,12 +258,14 @@ public class GhidraAnalysisService {
                     namespaces.add(ns.getName());
                 }
             }
-            return new ArrayList<>(namespaces).stream()
-                .sorted()
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList());
-        }).orElse(Collections.singletonList("No program loaded"));
+            return Either.<String, List<String>>right(
+                new ArrayList<>(namespaces).stream()
+                    .sorted()
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            );
+        }).orElse(Either.left("No program loaded"));
     }
 
     public List<String> searchFunctionsByName(String searchTerm, int offset, int limit) {
@@ -269,14 +279,16 @@ public class GhidraAnalysisService {
         ).orElse(Collections.singletonList("No program loaded"));
     }
 
-    public List<String> listFunctions(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
-            streamFunctions(program)
-                .map(func -> String.format("%s @ %s", func.getName(), func.getEntryPoint()))
-                .skip(offset)
-                .limit(limit)
-                .collect(Collectors.toList())
-        ).orElse(Collections.singletonList("No program loaded"));
+    public Either<String, List<String>> listFunctions(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
+            Either.<String, List<String>>right(
+                streamFunctions(program)
+                    .map(func -> String.format("%s @ %s", func.getName(), func.getEntryPoint()))
+                    .skip(offset)
+                    .limit(limit)
+                    .collect(Collectors.toList())
+            )
+        ).orElse(Either.left("No program loaded"));
     }
 
     public String getFunctionByAddress(String addressStr) {
@@ -300,23 +312,27 @@ public class GhidraAnalysisService {
     // Data Operations
     // ===============
 
-    public List<String> listDefinedData(int offset, int limit) {
-        return context.<List<String>>withProgram(program -> {
-            List<String> lines = new ArrayList<>();
-            for (MemoryBlock block : program.getMemory().getBlocks()) {
-                DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
-                while (it.hasNext()) {
-                    Data data = it.next();
-                    if (block.contains(data.getAddress())) {
-                        String label = data.getLabel() != null ? data.getLabel() : "(unnamed)";
-                        String valRepr = data.getDefaultValueRepresentation();
-                        lines.add(String.format("%s: %s = %s",
-                            data.getAddress(), escapeNonAscii(label), escapeNonAscii(valRepr)));
+    public Either<String, List<String>> listDefinedData(int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> {
+            try {
+                List<String> lines = new ArrayList<>();
+                for (MemoryBlock block : program.getMemory().getBlocks()) {
+                    DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
+                    while (it.hasNext()) {
+                        Data data = it.next();
+                        if (block.contains(data.getAddress())) {
+                            String label = data.getLabel() != null ? data.getLabel() : "(unnamed)";
+                            String valRepr = data.getDefaultValueRepresentation();
+                            lines.add(String.format("%s: %s = %s",
+                                data.getAddress(), escapeNonAscii(label), escapeNonAscii(valRepr)));
+                        }
                     }
                 }
+                return Either.right(lines.stream().skip(offset).limit(limit).collect(Collectors.toList()));
+            } catch (Exception e) {
+                return Either.left("Error listing defined data: " + e.getMessage());
             }
-            return lines.stream().skip(offset).limit(limit).collect(Collectors.toList());
-        }).orElse(Collections.singletonList("No program loaded"));
+        }).orElse(Either.left("No program loaded"));
     }
 
     public Either<String, String> renameDataAtAddress(String addressStr, String newName) {
@@ -366,51 +382,51 @@ public class GhidraAnalysisService {
     // Cross-Reference Operations
     // =========================
 
-    public List<String> getXrefsTo(String addressStr, int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
+    public Either<String, List<String>> getXrefsTo(String addressStr, int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
             parseAddress(program, addressStr)
-                .map(addr -> {
+                .flatMap(addr -> {
                     List<String> refs = new ArrayList<>();
                     ReferenceIterator refIter = program.getReferenceManager().getReferencesTo(addr);
-                    
+
                     while (refIter.hasNext()) {
                         Reference ref = refIter.next();
                         Address fromAddr = ref.getFromAddress();
                         RefType refType = ref.getReferenceType();
-                        
+
                         Function fromFunc = program.getFunctionManager().getFunctionContaining(fromAddr);
                         String funcInfo = (fromFunc != null) ? " in " + fromFunc.getName() : "";
-                        
+
                         refs.add(String.format("From %s%s [%s]", fromAddr, funcInfo, refType.getName()));
                     }
-                    
-                    return refs.stream().skip(offset).limit(limit).collect(Collectors.toList());
+
+                    return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
                 })
-                .fold(err -> Collections.singletonList("Invalid address: " + addressStr + ": " + err), list -> list)
-        ).orElse(Collections.singletonList("No program loaded"));
+                .orElse(Either.left("Invalid address: " + addressStr))
+        ).orElse(Either.left("No program loaded"));
     }
 
-    public List<String> getXrefsFrom(String addressStr, int offset, int limit) {
-        return context.<List<String>>withProgram(program -> 
+    public Either<String, List<String>> getXrefsFrom(String addressStr, int offset, int limit) {
+        return context.<Either<String, List<String>>>withProgram(program -> 
             parseAddress(program, addressStr)
-                .map(addr -> {
+                .flatMap(addr -> {
                     List<String> refs = new ArrayList<>();
                     Reference[] refsFrom = program.getReferenceManager().getReferencesFrom(addr);
-                    
+
                     for (Reference ref : refsFrom) {
                         Address toAddr = ref.getToAddress();
                         RefType refType = ref.getReferenceType();
-                        
+
                         Function toFunc = program.getFunctionManager().getFunctionContaining(toAddr);
                         String funcInfo = (toFunc != null) ? " in " + toFunc.getName() : "";
-                        
+
                         refs.add(String.format("To %s%s [%s]", toAddr, funcInfo, refType.getName()));
                     }
-                    
-                    return refs.stream().skip(offset).limit(limit).collect(Collectors.toList());
+
+                    return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
                 })
-                .fold(err -> Collections.singletonList("Invalid address: " + addressStr + ": " + err), list -> list)
-        ).orElse(Collections.singletonList("No program loaded"));
+                .orElse(Either.left("Invalid address: " + addressStr))
+        ).orElse(Either.left("No program loaded"));
     }
 
     public Either<String, List<String>> getFunctionXrefs(String functionName, int offset, int limit) {
@@ -444,34 +460,38 @@ public class GhidraAnalysisService {
     // String Analysis
     // ==============
 
-    public List<String> getStrings(int offset, int limit) {
+    public Either<String, List<String>> getStrings(int offset, int limit) {
         return getStrings(offset, limit, null);
     }
 
-    public List<String> getStrings(int offset, int limit, String filter) {
-        return context.<List<String>>withProgram(program -> {
-            List<String> strings = new ArrayList<>();
-            
-            for (MemoryBlock block : program.getMemory().getBlocks()) {
-                if (block.isInitialized()) {
-                    DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
-                    while (it.hasNext()) {
-                        Data data = it.next();
-                        if (data.hasStringValue()) {
-                            String value = data.getDefaultValueRepresentation();
-                            String stringEntry = String.format("%s: %s", data.getAddress(), escapeNonAscii(value));
-                            
-                            // Apply filter if specified
-                            if (filter == null || value.toLowerCase().contains(filter.toLowerCase())) {
-                                strings.add(stringEntry);
+    public Either<String, List<String>> getStrings(int offset, int limit, String filter) {
+        return context.<Either<String, List<String>>>withProgram(program -> {
+            try {
+                List<String> strings = new ArrayList<>();
+
+                for (MemoryBlock block : program.getMemory().getBlocks()) {
+                    if (block.isInitialized()) {
+                        DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
+                        while (it.hasNext()) {
+                            Data data = it.next();
+                            if (data.hasStringValue()) {
+                                String value = data.getDefaultValueRepresentation();
+                                String stringEntry = String.format("%s: %s", data.getAddress(), escapeNonAscii(value));
+
+                                // Apply filter if specified
+                                if (filter == null || value.toLowerCase().contains(filter.toLowerCase())) {
+                                    strings.add(stringEntry);
+                                }
                             }
                         }
                     }
                 }
+
+                return Either.right(strings.stream().skip(offset).limit(limit).collect(Collectors.toList()));
+            } catch (Exception e) {
+                return Either.left("Error listing strings: " + e.getMessage());
             }
-            
-            return strings.stream().skip(offset).limit(limit).collect(Collectors.toList());
-        }).orElse(Collections.singletonList("No program loaded"));
+        }).orElse(Either.left("No program loaded"));
     }
 
     // Comment Operations

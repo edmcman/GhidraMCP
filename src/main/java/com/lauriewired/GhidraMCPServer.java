@@ -85,8 +85,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getAllFunctionNames(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getAllFunctionNames(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/classes", exchange -> {
@@ -132,8 +132,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listSegments(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listSegments(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/imports", exchange -> {
@@ -141,8 +141,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listImports(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listImports(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/exports", exchange -> {
@@ -150,8 +150,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listExports(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listExports(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/namespaces", exchange -> {
@@ -159,8 +159,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listNamespaces(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listNamespaces(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/searchFunctions", exchange -> {
@@ -179,8 +179,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listDefinedData(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listDefinedData(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/renameData", exchange -> {
@@ -229,8 +229,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.listFunctions(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.listFunctions(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/disassemble_function", exchange -> {
@@ -245,8 +245,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getXrefsTo(address, offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getXrefsTo(address, offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/xrefs_from", exchange -> {
@@ -255,8 +255,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getXrefsFrom(address, offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getXrefsFrom(address, offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         server.createContext("/function_xrefs", exchange -> {
@@ -274,8 +274,8 @@ public class GhidraMCPServer {
             int offset = parseIntOrDefault(qparams.get("offset"), 0);
             int limit = parseIntOrDefault(qparams.get("limit"), 100);
             
-            List<String> result = analysisService.getStrings(offset, limit);
-            sendResponse(exchange, String.join("\n", result));
+            Either<String, List<String>> result = analysisService.getStrings(offset, limit);
+            sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
         // Additional advanced endpoints
