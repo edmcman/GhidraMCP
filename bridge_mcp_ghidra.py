@@ -129,7 +129,7 @@ def get_ghidra_install_dir():
     analyze_headless = os.path.join(ghidra_dir, "support", "analyzeHeadless")
     if not os.path.exists(analyze_headless):
         raise ValueError(f"analyzeHeadless not found at: {analyze_headless}")
-    return analyze_headless
+    return ghidra_dir, analyze_headless
 
 def check_headless_tools_enabled() -> str | None:
     """
@@ -176,7 +176,7 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         # Get Ghidra installation
         try:
-            analyze_headless = get_ghidra_install_dir()
+            ghidra_dir, analyze_headless = get_ghidra_install_dir()
         except ValueError as e:
             return f"Error: {str(e)}"
         
@@ -238,6 +238,10 @@ def open_artifact_headless(artifact_path: str) -> str:
         # Check if process is still running
         if (ret := current_ghidra_process.poll()) is not None:
             stdout, _ = current_ghidra_process.communicate()
+
+            if "Script not found: HeadlessMCPServerScript.java" in stdout:
+                return f"Error: Ghidra script 'HeadlessMCPServerScript.java' was not found in '{ghidra_dir}'. Please install the GhidraMCP extension."
+
             return f"Error: Ghidra process exited unexpectedly (code {ret})\n{stdout}"
         
         # Process still running but server didn't start - get output with timeout
