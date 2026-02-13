@@ -5,7 +5,6 @@
 /build/
 .gradle/
 /dist/
-/gradle/wrapper
 
 # Compiled class files
 *.class
