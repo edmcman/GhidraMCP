@@ -140,24 +140,25 @@ Another MCP client that supports multiple models on the backend is [5ire](https:
 
 **Note:** The extension now uses Ghidra's standard build system. You no longer need to manually copy JAR files.
 
-Build with Gradle by running:
+Build and install with Gradle by running:
 
 ```bash
-./gradlew -PGHIDRA_INSTALL_DIR=/path/to/ghidra
+./gradlew -PGHIDRA_INSTALL_DIR=/path/to/ghidra install
 ```
 
-Or set as environment variable:
+If you omit `install`, gradle will build the plugin in `dist/` but will not install it in Ghidra.
+
+You can also set the `GHIDRA_INSTALL_DIR` environment variable instead of
+passing it as a Gradle property:
 
 ```bash
 export GHIDRA_INSTALL_DIR=/path/to/ghidra
-./gradlew
+./gradlew install
 ```
 
 Or on Windows:
 
 ```cmd
 set GHIDRA_INSTALL_DIR=C:\path\to\ghidra
-gradlew.bat
+gradlew.bat install
 ```
-
-The generated zip file will be in `dist/` and includes the built Ghidra plugin and its resources.
