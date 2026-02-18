@@ -12,7 +12,9 @@ import java.util.Optional;
 
 @PluginInfo(
     status = PluginStatus.RELEASED,
-    packageName = ghidra.app.DeveloperPluginPackage.NAME,
+    // The core package is enabled by default. So if we put our plugin in it, it
+    // will be enabled by default too!
+    packageName = ghidra.app.CorePluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "HTTP server plugin",
     description = "Starts an embedded HTTP server to expose program data. Port configurable via Tool Options."
