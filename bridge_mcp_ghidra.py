@@ -36,6 +36,55 @@ ghidra_server_url = DEFAULT_GHIDRA_SERVER
 current_ghidra_process = None
 current_project_dir = None
 
+def terminate_process_tree(process: subprocess.Popen, timeout: int = 5) -> None:
+    """Terminate a process and all of its children."""
+    if process.poll() is not None:
+        return
+
+    pid = process.pid
+
+    # POSIX: kill the full process group created via start_new_session.
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Unable to get process group for PID {pid}: {e}")
+        process.terminate()
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return
+
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Failed to send SIGTERM to PGID {pgid}: {e}")
+
+    try:
+        process.wait(timeout=timeout)
+        return
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process group {pgid} did not terminate gracefully; sending SIGKILL")
+
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Failed to send SIGKILL to PGID {pgid}: {e}")
+
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process group {pgid} still alive after SIGKILL; forcing direct kill")
+        process.kill()
+        process.wait()
+
 def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
     """
     Perform a GET request with optional query parameters.
@@ -90,13 +139,7 @@ def kill_existing_ghidra_processes():
         try:
             if current_ghidra_process.poll() is None:  # Process is still running
                 logger.info(f"Killing tracked Ghidra process {current_ghidra_process.pid}")
-                current_ghidra_process.terminate()
-                try:
-                    current_ghidra_process.wait(timeout=5)  # Wait up to 5 seconds for graceful termination
-                except subprocess.TimeoutExpired:
-                    logger.warning("Process didn't terminate gracefully, forcing kill")
-                    current_ghidra_process.kill()
-                    current_ghidra_process.wait()
+                terminate_process_tree(current_ghidra_process, timeout=5)
                 killed_count += 1
             current_ghidra_process = None
         except (OSError, subprocess.SubprocessError) as e:
@@ -216,22 +259,25 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         # Build shell command with output limiting to prevent buffering issues
         # Capture last ~60KB (just under typical 64KB pipe buffer) to get recent errors
+        
         shell_cmd = ' '.join(f"'{arg}'" if ' ' in arg else arg for arg in cmd) + ' 2>&1 | tail -c 61440'
         
         # Start the process with shell to enable pipe redirection
-        current_ghidra_process = subprocess.Popen(
-            shell_cmd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,  # Already merged via 2>&1
-            text=True,
-            shell=True
-        )
+        popen_kwargs = {
+            "env": env,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.DEVNULL,  # Already merged via 2>&1
+            "text": True,
+            "shell": True,
+            "start_new_session": True,  # Start in new session to manage process group
+        }
+
+        current_ghidra_process = subprocess.Popen(shell_cmd, **popen_kwargs)
         
         # Wait for server to become available
         logger.info(f"Waiting for Ghidra HTTP server to become available at {ghidra_server_url} (waiting up to 60s)...")
         if wait_for_ghidra_server():
-            return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url}"
+            return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url} pid {current_ghidra_process.pid}"
         
         logger.error("Timed out waiting for Ghidra HTTP server to start")
         
@@ -249,7 +295,7 @@ def open_artifact_headless(artifact_path: str) -> str:
             stdout, _ = current_ghidra_process.communicate(timeout=5)
             return f"Warning: Server not available at {ghidra_server_url}. Output:\n{stdout}"
         except subprocess.TimeoutExpired:
-            current_ghidra_process.kill()
+            terminate_process_tree(current_ghidra_process, timeout=5)
             stdout, _ = current_ghidra_process.communicate()
             return f"Warning: Server not available at {ghidra_server_url}. Process killed. Output:\n{stdout}"
         
@@ -749,4 +795,3 @@ def main():
         
 if __name__ == "__main__":
     main()
-
