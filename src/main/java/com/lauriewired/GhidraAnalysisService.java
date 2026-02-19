@@ -7,6 +7,7 @@ import ghidra.program.model.symbol.*;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
+import ghidra.app.services.GoToService;
 import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.script.*;
@@ -380,6 +381,55 @@ public class GhidraAnalysisService {
     public String getCurrentFunction() {
         return context.getCurrentFunction()
             .orElse(context.isGuiMode() ? "No function at current location" : "Not available in headless mode");
+    }
+
+    public String goToTarget(String target) {
+        try {
+            if (target == null || target.trim().isEmpty()) {
+                return "Error: target is required";
+            }
+            if (!context.isGuiMode()) {
+                return "Not available in headless mode";
+            }
+
+            String normalizedTarget = target.trim();
+            return context.<String>withProgram(program -> {
+                Optional<PluginTool> toolOpt = context.getTool();
+                if (toolOpt.isEmpty()) {
+                    return "Error: GoTo service unavailable";
+                }
+
+                GoToService goToService = toolOpt.get().getService(GoToService.class);
+                if (goToService == null) {
+                    return "Error: GoTo service unavailable";
+                }
+
+                Either<String, Address> parsedAddress = parseAddress(program, normalizedTarget);
+                if (parsedAddress.isRight()) {
+                    Address address = parsedAddress.get();
+                    boolean ok = goToService.goTo(address, program);
+                    if (!ok) {
+                        return "Error: navigation failed for target: " + normalizedTarget;
+                    }
+                    return "Navigated to address: " + address;
+                }
+
+                Either<String, Function> functionResult = findFunctionByName(program, normalizedTarget);
+                if (functionResult.isLeft()) {
+                    return "Function not found: " + normalizedTarget;
+                }
+
+                Function function = functionResult.get();
+                Address functionAddress = function.getEntryPoint();
+                boolean ok = goToService.goTo(functionAddress, program);
+                if (!ok) {
+                    return "Error: navigation failed for target: " + normalizedTarget;
+                }
+                return String.format("Navigated to function: %s @ %s", function.getName(), functionAddress);
+            }).orElse("No program loaded");
+        } catch (Exception e) {
+            return "Error: goto failed: " + e.getMessage();
+        }
     }
 
     // Cross-Reference Operations
@@ -861,7 +911,14 @@ public class GhidraAnalysisService {
 
     private Either<String, Address> parseAddress(Program program, String addressStr) {
         try {
-            return Either.right(program.getAddressFactory().getAddress(addressStr));
+            if (addressStr == null || addressStr.trim().isEmpty()) {
+                return Either.left("Invalid address format: " + addressStr);
+            }
+            Address parsed = program.getAddressFactory().getAddress(addressStr.trim());
+            if (parsed == null) {
+                return Either.left("Invalid address format: " + addressStr);
+            }
+            return Either.right(parsed);
         } catch (Exception e) {
             return Either.left("Invalid address format: " + addressStr + " - " + e.getMessage());
         }

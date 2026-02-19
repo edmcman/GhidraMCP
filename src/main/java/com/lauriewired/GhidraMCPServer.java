@@ -204,6 +204,24 @@ public class GhidraMCPServer {
             sendResponse(exchange, analysisService.getCurrentFunction());
         });
 
+        server.createContext("/goto", exchange -> {
+            try {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parsePostParams(exchange);
+                    String result = analysisService.goToTarget(params.get("target"));
+                    sendResponse(exchange, result != null ? result : "Error: goto returned no response");
+                } else {
+                    exchange.sendResponseHeaders(405, -1);
+                }
+            } catch (Exception e) {
+                try {
+                    sendResponse(exchange, "Error: goto endpoint failed: " + e.getMessage());
+                } catch (Exception ignored) {
+                    System.err.println("Failed to send goto error response: " + e.getMessage());
+                }
+            }
+        });
+
         // Server status endpoint - provides mode (Headed vs Headless), GUI flag and program status
         server.createContext("/status", exchange -> {
             Map<String, Object> response = new HashMap<>();

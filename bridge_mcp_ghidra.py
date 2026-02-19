@@ -500,6 +500,15 @@ def get_current_function() -> str:
     return "\n".join(safe_get("get_current_function"))
 
 @mcp.tool()
+def goto(target: str) -> str:
+    """
+    Navigate to an address or function name in headed (GUI) mode.
+    """
+    if not target or not target.strip():
+        return "Error: target is required"
+    return safe_post("goto", {"target": target})
+
+@mcp.tool()
 def list_functions(offset: int = 0, limit: int = 100) -> list:
     """
     List all functions in the database with pagination.
