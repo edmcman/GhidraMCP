@@ -355,32 +355,91 @@ public class GhidraAnalysisService {
         }).orElse(Either.left("No program loaded"));
     }
 
-    public Either<String, String> renameDataAtAddress(String addressStr, String newName) {
+    public Either<String, String> createOrUpdateDataItem(String addressStr, String dataTypeName, String newName) {
+        String normalizedTypeName = dataTypeName != null ? dataTypeName.trim() : "";
+        String normalizedNewName = newName != null ? newName.trim() : "";
+        boolean hasType = !normalizedTypeName.isEmpty();
+        boolean hasName = !normalizedNewName.isEmpty();
+
+        if (!hasType && !hasName) {
+            return Either.left("At least one of data_type or new_name is required");
+        }
+
         return context.<Either<String, String>>withProgram(program -> {
-            int tx = program.startTransaction("Rename data");
+            int tx = program.startTransaction("Create or update data item");
+            boolean success = false;
             try {
-                return parseAddress(program, addressStr)
+                Either<String, String> result = parseAddress(program, addressStr)
                     .flatMap(addr -> {
-                        try {
-                            Data data = program.getListing().getDefinedDataAt(addr);
-                            if (data != null) {
+                        Data existingData = program.getListing().getDefinedDataAt(addr);
+                        if (!hasType && existingData == null) {
+                            return Either.left("No data at address: " + addr + " (data_type required to create)");
+                        }
+
+                        List<String> changes = new ArrayList<>();
+
+                        if (hasType) {
+                            Either<String, DataType> dataTypeResult = resolveDataType(program.getDataTypeManager(), normalizedTypeName);
+                            if (dataTypeResult.isLeft()) {
+                                return Either.left(dataTypeResult.getLeft());
+                            }
+
+                            DataType resolvedType = dataTypeResult.get();
+                            int length = resolvedType.getLength();
+                            if (length <= 0) {
+                                return Either.left("Data type '" + resolvedType.getName() + "' has unsupported length: " + length);
+                            }
+
+                            Address endAddr;
+                            try {
+                                endAddr = addr.addNoWrap(length - 1L);
+                            } catch (AddressOverflowException e) {
+                                return Either.left("Data range overflows address space: " + e.getMessage());
+                            }
+
+                            try {
+                                program.getListing().clearCodeUnits(addr, endAddr, false);
+                                Data createdData = program.getListing().createData(addr, resolvedType);
+                                if (createdData == null) {
+                                    return Either.left("Failed to create data at address: " + addr);
+                                }
+                            } catch (Exception e) {
+                                return Either.left("Error creating/updating data at " + addr + ": " + e.getMessage());
+                            }
+
+                            String typeDisplayName = resolvedType.getDisplayName() != null
+                                ? resolvedType.getDisplayName()
+                                : resolvedType.getName();
+                            if (existingData == null) {
+                                changes.add("created data type '" + typeDisplayName + "'");
+                            } else {
+                                changes.add("updated data type to '" + typeDisplayName + "'");
+                            }
+                        }
+
+                        if (hasName) {
+                            try {
                                 SymbolTable symTable = program.getSymbolTable();
                                 Symbol symbol = symTable.getPrimarySymbol(addr);
                                 if (symbol != null) {
-                                    symbol.setName(newName, SourceType.USER_DEFINED);
+                                    symbol.setName(normalizedNewName, SourceType.USER_DEFINED);
                                 } else {
-                                    symTable.createLabel(addr, newName, SourceType.USER_DEFINED);
+                                    symTable.createLabel(addr, normalizedNewName, SourceType.USER_DEFINED);
                                 }
-                                return Either.<String, String>right("Data renamed successfully");
+                                changes.add("set label to '" + normalizedNewName + "'");
+                            } catch (Exception e) {
+                                return Either.left("Error renaming data label at " + addr + ": " + e.getMessage());
                             }
-                            return Either.left("No data at address: " + addr);
-                        } catch (Exception e) {
-                            return Either.left("Error renaming data: " + e.getMessage());
                         }
+
+                        return Either.right("Successfully " + String.join(" and ", changes) + " at " + addr);
                     })
                     .orElse(Either.left("Invalid address: " + addressStr));
+
+                success = result.isRight();
+                return result;
             } finally {
-                program.endTransaction(tx, true);
+                program.endTransaction(tx, success);
             }
         }).orElse(Either.left("No program loaded"));
     }

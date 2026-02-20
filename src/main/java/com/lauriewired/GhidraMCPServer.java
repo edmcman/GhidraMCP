@@ -183,10 +183,12 @@ public class GhidraMCPServer {
             sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
-        server.createContext("/renameData", exchange -> {
+        server.createContext("/create_or_update_data_item", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            Either<String, String> result = analysisService.renameDataAtAddress(
-                params.get("address"), params.get("newName"));
+            Either<String, String> result = analysisService.createOrUpdateDataItem(
+                params.get("address"),
+                params.get("data_type"),
+                params.get("new_name"));
             sendResponse(exchange, result.fold(err -> err, ok -> ok));
         });
 

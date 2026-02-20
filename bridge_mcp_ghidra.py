@@ -417,11 +417,20 @@ def rename_function(old_name: str, new_name: str) -> str:
     return safe_post("renameFunction", {"oldName": old_name, "newName": new_name})
 
 @mcp.tool()
-def rename_data(address: str, new_name: str) -> str:
+def create_or_update_data_item(address: str, data_type: Optional[str] = None, new_name: Optional[str] = None) -> str:
     """
-    Rename a data label at the specified address.
+    Create a data item at an address, or update an existing item's type/name.
     """
-    return safe_post("renameData", {"address": address, "newName": new_name})
+    if (data_type is None or not data_type.strip()) and (new_name is None or not new_name.strip()):
+        return "Error: at least one of data_type or new_name is required"
+
+    payload = {"address": address}
+    if data_type is not None:
+        payload["data_type"] = data_type
+    if new_name is not None:
+        payload["new_name"] = new_name
+
+    return safe_post("create_or_update_data_item", payload)
 
 @mcp.tool()
 def list_segments(offset: int = 0, limit: int = 100) -> list:
