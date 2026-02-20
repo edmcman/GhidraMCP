@@ -454,7 +454,7 @@ def list_namespaces(offset: int = 0, limit: int = 100) -> list:
 @mcp.tool()
 def list_data_items(offset: int = 0, limit: int = 100) -> list:
     """
-    List defined data labels and their values with pagination.
+    List defined data labels, datatypes, and values with pagination.
     """
     return safe_get("data", {"offset": offset, "limit": limit})
 

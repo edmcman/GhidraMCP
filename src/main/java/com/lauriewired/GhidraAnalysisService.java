@@ -326,9 +326,25 @@ public class GhidraAnalysisService {
                         Data data = it.next();
                         if (block.contains(data.getAddress())) {
                             String label = data.getLabel() != null ? data.getLabel() : "(unnamed)";
+                            DataType dataType = data.getDataType();
+                            String typeName = "(unknown)";
+                            if (dataType != null) {
+                                String displayName = dataType.getDisplayName();
+                                if (displayName != null && !displayName.trim().isEmpty()) {
+                                    typeName = displayName;
+                                } else {
+                                    String fallbackName = dataType.getName();
+                                    if (fallbackName != null && !fallbackName.trim().isEmpty()) {
+                                        typeName = fallbackName;
+                                    }
+                                }
+                            }
                             String valRepr = data.getDefaultValueRepresentation();
-                            lines.add(String.format("%s: %s = %s",
-                                data.getAddress(), escapeNonAscii(label), escapeNonAscii(valRepr)));
+                            lines.add(String.format("%s: %s (%s) = %s",
+                                data.getAddress(),
+                                escapeNonAscii(label),
+                                escapeNonAscii(typeName),
+                                escapeNonAscii(valRepr)));
                         }
                     }
                 }
