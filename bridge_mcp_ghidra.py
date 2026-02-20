@@ -621,7 +621,7 @@ def get_function_xrefs(name: str, offset: int = 0, limit: int = 100) -> list:
     Returns:
         List of references to the specified function
     """
-    return safe_get("function_xrefs", {"name": name, "offset": offset, "limit": limit})
+    return safe_get("function_xrefs", {"function_name": name, "offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_strings(offset: int = 0, limit: int = 2000, filter: Optional[str] = None) -> list:

@@ -524,8 +524,10 @@ public class GhidraAnalysisService {
 
                         Function fromFunc = program.getFunctionManager().getFunctionContaining(fromAddr);
                         String funcInfo = (fromFunc != null) ? " in " + fromFunc.getName() : "";
+                        String label = getPrimarySymbolLabel(program, fromAddr).fold(err -> "", value -> value);
+                        String labelInfo = label.isEmpty() ? "" : " [label:" + label + "]";
 
-                        refs.add(String.format("From %s%s [%s]", fromAddr, funcInfo, refType.getName()));
+                        refs.add(String.format("From %s%s%s [%s]", fromAddr, funcInfo, labelInfo, refType.getName()));
                     }
 
                     return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
@@ -547,8 +549,10 @@ public class GhidraAnalysisService {
 
                         Function toFunc = program.getFunctionManager().getFunctionContaining(toAddr);
                         String funcInfo = (toFunc != null) ? " in " + toFunc.getName() : "";
+                        String label = getPrimarySymbolLabel(program, toAddr).fold(err -> "", value -> value);
+                        String labelInfo = label.isEmpty() ? "" : " [label:" + label + "]";
 
-                        refs.add(String.format("To %s%s [%s]", toAddr, funcInfo, refType.getName()));
+                        refs.add(String.format("To %s%s%s [%s]", toAddr, funcInfo, labelInfo, refType.getName()));
                     }
 
                     return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
@@ -1040,6 +1044,22 @@ public class GhidraAnalysisService {
             return header + instructionList;
         } catch (Exception e) {
             return "Error disassembling function: " + e.getMessage();
+        }
+    }
+
+    private Either<String, String> getPrimarySymbolLabel(Program program, Address address) {
+        try {
+            Symbol symbol = program.getSymbolTable().getPrimarySymbol(address);
+            if (symbol == null) {
+                return Either.right("");
+            }
+            String symbolName = symbol.getName();
+            if (symbolName == null || symbolName.trim().isEmpty()) {
+                return Either.right("");
+            }
+            return Either.right(escapeNonAscii(symbolName));
+        } catch (Exception e) {
+            return Either.left("Error resolving primary symbol label at " + address + ": " + e.getMessage());
         }
     }
 
