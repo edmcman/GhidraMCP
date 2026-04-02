@@ -579,14 +579,14 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: Optional[str] = Non
 @mcp.tool()
 def run_ghidra_script(name: str, script: str) -> str:
     """
-    Run a Ghidra script.  Use file I/O to output information. Do not use the console.
+    Run a Ghidra script and return its output.
 
     Args:
         name: The name of the script file, including the extension (e.g., "MyScript.java" or "MyScript.py")
         script: The source code for the script to run
 
     Returns:
-        Error message if execution fails.
+        Output printed by the script, or an error message if execution fails.
     """
     params = {"script": script, "name": name}
     return safe_post("run_script", params)
