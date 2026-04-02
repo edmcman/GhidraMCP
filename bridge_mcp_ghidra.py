@@ -37,6 +37,55 @@ ghidra_server_url = DEFAULT_GHIDRA_SERVER
 current_ghidra_process = None
 current_project_dir = None
 
+def terminate_process_tree(process: subprocess.Popen, timeout: int = 5) -> None:
+    """Terminate a process and all of its children."""
+    if process.poll() is not None:
+        return
+
+    pid = process.pid
+
+    # POSIX: kill the full process group created via start_new_session.
+    try:
+        pgid = os.getpgid(pid)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Unable to get process group for PID {pid}: {e}")
+        process.terminate()
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+        return
+
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Failed to send SIGTERM to PGID {pgid}: {e}")
+
+    try:
+        process.wait(timeout=timeout)
+        return
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process group {pgid} did not terminate gracefully; sending SIGKILL")
+
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
+    except OSError as e:
+        logger.warning(f"Failed to send SIGKILL to PGID {pgid}: {e}")
+
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Process group {pgid} still alive after SIGKILL; forcing direct kill")
+        process.kill()
+        process.wait()
+
 def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
     """
     Perform a GET request with optional query parameters.
@@ -91,13 +140,7 @@ def kill_existing_ghidra_processes():
         try:
             if current_ghidra_process.poll() is None:  # Process is still running
                 logger.info(f"Killing tracked Ghidra process {current_ghidra_process.pid}")
-                current_ghidra_process.terminate()
-                try:
-                    current_ghidra_process.wait(timeout=5)  # Wait up to 5 seconds for graceful termination
-                except subprocess.TimeoutExpired:
-                    logger.warning("Process didn't terminate gracefully, forcing kill")
-                    current_ghidra_process.kill()
-                    current_ghidra_process.wait()
+                terminate_process_tree(current_ghidra_process, timeout=5)
                 killed_count += 1
             current_ghidra_process = None
         except (OSError, subprocess.SubprocessError) as e:
@@ -130,7 +173,7 @@ def get_ghidra_install_dir():
     analyze_headless = os.path.join(ghidra_dir, "support", "analyzeHeadless")
     if not os.path.exists(analyze_headless):
         raise ValueError(f"analyzeHeadless not found at: {analyze_headless}")
-    return analyze_headless
+    return ghidra_dir, analyze_headless
 
 def check_headless_tools_enabled() -> str | None:
     """
@@ -179,7 +222,7 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         # Get Ghidra installation
         try:
-            analyze_headless = get_ghidra_install_dir()
+            ghidra_dir, analyze_headless = get_ghidra_install_dir()
         except ValueError as e:
             return f"Error: {str(e)}"
         
@@ -219,28 +262,35 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         # Build shell command with output limiting to prevent buffering issues
         # Capture last ~60KB (just under typical 64KB pipe buffer) to get recent errors
+        
         shell_cmd = ' '.join(f"'{arg}'" if ' ' in arg else arg for arg in cmd) + ' 2>&1 | tail -c 61440'
         
         # Start the process with shell to enable pipe redirection
-        current_ghidra_process = subprocess.Popen(
-            shell_cmd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,  # Already merged via 2>&1
-            text=True,
-            shell=True
-        )
+        popen_kwargs = {
+            "env": env,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.DEVNULL,  # Already merged via 2>&1
+            "text": True,
+            "shell": True,
+            "start_new_session": True,  # Start in new session to manage process group
+        }
+
+        current_ghidra_process = subprocess.Popen(shell_cmd, **popen_kwargs)
         
         # Wait for server to become available
         logger.info(f"Waiting for Ghidra HTTP server to become available at {ghidra_server_url} (waiting up to 60s)...")
         if wait_for_ghidra_server():
-            return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url}"
+            return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url} pid {current_ghidra_process.pid}"
         
         logger.error("Timed out waiting for Ghidra HTTP server to start")
         
         # Check if process is still running
         if (ret := current_ghidra_process.poll()) is not None:
             stdout, _ = current_ghidra_process.communicate()
+
+            if "Script not found: HeadlessMCPServerScript.java" in stdout:
+                return f"Error: Ghidra script 'HeadlessMCPServerScript.java' was not found in '{ghidra_dir}'. Please install the GhidraMCP extension."
+
             return f"Error: Ghidra process exited unexpectedly (code {ret})\n{stdout}"
         
         # Process still running but server didn't start - get output with timeout
@@ -248,7 +298,7 @@ def open_artifact_headless(artifact_path: str) -> str:
             stdout, _ = current_ghidra_process.communicate(timeout=5)
             return f"Warning: Server not available at {ghidra_server_url}. Output:\n{stdout}"
         except subprocess.TimeoutExpired:
-            current_ghidra_process.kill()
+            terminate_process_tree(current_ghidra_process, timeout=5)
             stdout, _ = current_ghidra_process.communicate()
             return f"Warning: Server not available at {ghidra_server_url}. Process killed. Output:\n{stdout}"
         
@@ -370,11 +420,20 @@ def rename_function(old_name: str, new_name: str) -> str:
     return safe_post("renameFunction", {"oldName": old_name, "newName": new_name})
 
 @mcp.tool()
-def rename_data(address: str, new_name: str) -> str:
+def create_or_update_data_item(address: str, data_type: Optional[str] = None, new_name: Optional[str] = None) -> str:
     """
-    Rename a data label at the specified address.
+    Create a data item at an address, or update an existing item's type/name.
     """
-    return safe_post("renameData", {"address": address, "newName": new_name})
+    if (data_type is None or not data_type.strip()) and (new_name is None or not new_name.strip()):
+        return "Error: at least one of data_type or new_name is required"
+
+    payload = {"address": address}
+    if data_type is not None:
+        payload["data_type"] = data_type
+    if new_name is not None:
+        payload["new_name"] = new_name
+
+    return safe_post("create_or_update_data_item", payload)
 
 @mcp.tool()
 def list_segments(offset: int = 0, limit: int = 100) -> list:
@@ -407,7 +466,7 @@ def list_namespaces(offset: int = 0, limit: int = 100) -> list:
 @mcp.tool()
 def list_data_items(offset: int = 0, limit: int = 100) -> list:
     """
-    List defined data labels and their values with pagination.
+    List defined data labels, datatypes, and values with pagination.
     """
     return safe_get("data", {"offset": offset, "limit": limit})
 
@@ -451,6 +510,15 @@ def get_current_function() -> str:
     Get the function currently selected by the user.
     """
     return "\n".join(safe_get("get_current_function"))
+
+@mcp.tool()
+def goto(target: str) -> str:
+    """
+    Navigate to an address or function name in headed (GUI) mode.
+    """
+    if not target or not target.strip():
+        return "Error: target is required"
+    return safe_post("goto", {"target": target})
 
 @mcp.tool()
 def list_functions(offset: int = 0, limit: int = 100) -> list:
@@ -556,7 +624,7 @@ def get_function_xrefs(name: str, offset: int = 0, limit: int = 100) -> list:
     Returns:
         List of references to the specified function
     """
-    return safe_get("function_xrefs", {"name": name, "offset": offset, "limit": limit})
+    return safe_get("function_xrefs", {"function_name": name, "offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_strings(offset: int = 0, limit: int = 2000, filter: Optional[str] = None) -> list:
@@ -748,4 +816,3 @@ def main():
         
 if __name__ == "__main__":
     main()
-

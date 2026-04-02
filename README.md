@@ -19,9 +19,8 @@ https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 ## GUI Mode (Plugin)
 1. Build or download the extension: `GhidraMCP-1.0-SNAPSHOT.zip`
 2. Install in Ghidra: `File` → `Install Extensions` → `+` → Select ZIP
-3. Enable plugin: From the *Code Browser*: `File` → `Configure` → `Developer` → Check "GhidraMCPPlugin"
-4. Load a program - HTTP server starts automatically on port 8080
-5. Access endpoints: `curl http://localhost:8080/methods`
+3. Load a program - HTTP server starts automatically on port 8080
+4. Access endpoints: `curl http://localhost:8080/methods`
 
 ## Headless Mode (Command Line)
 ```bash
@@ -76,8 +75,7 @@ First, download the latest [release](https://github.com/LaurieWired/GhidraMCP/re
 3. Click the `+` button
 4. Select the `GhidraMCP-1-2.zip` (or your chosen version) from the downloaded release
 5. Restart Ghidra
-6. Make sure the GhidraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
-7. *Optional*: Configure the port in Ghidra with `Edit` -> `Tool Options` -> `GhidraMCP HTTP Server`
+6. *Optional*: Configure the port in Ghidra with `Edit` -> `Tool Options` -> `GhidraMCP HTTP Server`
 
 Video Installation Guide:
 
@@ -142,24 +140,25 @@ Another MCP client that supports multiple models on the backend is [5ire](https:
 
 **Note:** The extension now uses Ghidra's standard build system. You no longer need to manually copy JAR files.
 
-Build with Gradle by running:
+Build and install with Gradle by running:
 
 ```bash
-./gradlew -PGHIDRA_INSTALL_DIR=/path/to/ghidra
+./gradlew -PGHIDRA_INSTALL_DIR=/path/to/ghidra install
 ```
 
-Or set as environment variable:
+If you omit `install`, gradle will build the plugin in `dist/` but will not install it in Ghidra.
+
+You can also set the `GHIDRA_INSTALL_DIR` environment variable instead of
+passing it as a Gradle property:
 
 ```bash
 export GHIDRA_INSTALL_DIR=/path/to/ghidra
-./gradlew
+./gradlew install
 ```
 
 Or on Windows:
 
 ```cmd
 set GHIDRA_INSTALL_DIR=C:\path\to\ghidra
-gradlew.bat
+gradlew.bat install
 ```
-
-The generated zip file will be in `dist/` and includes the built Ghidra plugin and its resources.

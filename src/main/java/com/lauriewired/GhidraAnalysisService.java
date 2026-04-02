@@ -7,6 +7,7 @@ import ghidra.program.model.symbol.*;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.data.*;
 import ghidra.app.decompiler.*;
+import ghidra.app.services.GoToService;
 import ghidra.app.util.parser.FunctionSignatureParser;
 import ghidra.app.cmd.function.ApplyFunctionSignatureCmd;
 import ghidra.app.script.*;
@@ -325,9 +326,25 @@ public class GhidraAnalysisService {
                         Data data = it.next();
                         if (block.contains(data.getAddress())) {
                             String label = data.getLabel() != null ? data.getLabel() : "(unnamed)";
+                            DataType dataType = data.getDataType();
+                            String typeName = "(unknown)";
+                            if (dataType != null) {
+                                String displayName = dataType.getDisplayName();
+                                if (displayName != null && !displayName.trim().isEmpty()) {
+                                    typeName = displayName;
+                                } else {
+                                    String fallbackName = dataType.getName();
+                                    if (fallbackName != null && !fallbackName.trim().isEmpty()) {
+                                        typeName = fallbackName;
+                                    }
+                                }
+                            }
                             String valRepr = data.getDefaultValueRepresentation();
-                            lines.add(String.format("%s: %s = %s",
-                                data.getAddress(), escapeNonAscii(label), escapeNonAscii(valRepr)));
+                            lines.add(String.format("%s: %s (%s) = %s",
+                                data.getAddress(),
+                                escapeNonAscii(label),
+                                escapeNonAscii(typeName),
+                                escapeNonAscii(valRepr)));
                         }
                     }
                 }
@@ -338,32 +355,91 @@ public class GhidraAnalysisService {
         }).orElse(Either.left("No program loaded"));
     }
 
-    public Either<String, String> renameDataAtAddress(String addressStr, String newName) {
+    public Either<String, String> createOrUpdateDataItem(String addressStr, String dataTypeName, String newName) {
+        String normalizedTypeName = dataTypeName != null ? dataTypeName.trim() : "";
+        String normalizedNewName = newName != null ? newName.trim() : "";
+        boolean hasType = !normalizedTypeName.isEmpty();
+        boolean hasName = !normalizedNewName.isEmpty();
+
+        if (!hasType && !hasName) {
+            return Either.left("At least one of data_type or new_name is required");
+        }
+
         return context.<Either<String, String>>withProgram(program -> {
-            int tx = program.startTransaction("Rename data");
+            int tx = program.startTransaction("Create or update data item");
+            boolean success = false;
             try {
-                return parseAddress(program, addressStr)
+                Either<String, String> result = parseAddress(program, addressStr)
                     .flatMap(addr -> {
-                        try {
-                            Data data = program.getListing().getDefinedDataAt(addr);
-                            if (data != null) {
+                        Data existingData = program.getListing().getDefinedDataAt(addr);
+                        if (!hasType && existingData == null) {
+                            return Either.left("No data at address: " + addr + " (data_type required to create)");
+                        }
+
+                        List<String> changes = new ArrayList<>();
+
+                        if (hasType) {
+                            Either<String, DataType> dataTypeResult = resolveDataType(program.getDataTypeManager(), normalizedTypeName);
+                            if (dataTypeResult.isLeft()) {
+                                return Either.left(dataTypeResult.getLeft());
+                            }
+
+                            DataType resolvedType = dataTypeResult.get();
+                            int length = resolvedType.getLength();
+                            if (length <= 0) {
+                                return Either.left("Data type '" + resolvedType.getName() + "' has unsupported length: " + length);
+                            }
+
+                            Address endAddr;
+                            try {
+                                endAddr = addr.addNoWrap(length - 1L);
+                            } catch (AddressOverflowException e) {
+                                return Either.left("Data range overflows address space: " + e.getMessage());
+                            }
+
+                            try {
+                                program.getListing().clearCodeUnits(addr, endAddr, false);
+                                Data createdData = program.getListing().createData(addr, resolvedType);
+                                if (createdData == null) {
+                                    return Either.left("Failed to create data at address: " + addr);
+                                }
+                            } catch (Exception e) {
+                                return Either.left("Error creating/updating data at " + addr + ": " + e.getMessage());
+                            }
+
+                            String typeDisplayName = resolvedType.getDisplayName() != null
+                                ? resolvedType.getDisplayName()
+                                : resolvedType.getName();
+                            if (existingData == null) {
+                                changes.add("created data type '" + typeDisplayName + "'");
+                            } else {
+                                changes.add("updated data type to '" + typeDisplayName + "'");
+                            }
+                        }
+
+                        if (hasName) {
+                            try {
                                 SymbolTable symTable = program.getSymbolTable();
                                 Symbol symbol = symTable.getPrimarySymbol(addr);
                                 if (symbol != null) {
-                                    symbol.setName(newName, SourceType.USER_DEFINED);
+                                    symbol.setName(normalizedNewName, SourceType.USER_DEFINED);
                                 } else {
-                                    symTable.createLabel(addr, newName, SourceType.USER_DEFINED);
+                                    symTable.createLabel(addr, normalizedNewName, SourceType.USER_DEFINED);
                                 }
-                                return Either.<String, String>right("Data renamed successfully");
+                                changes.add("set label to '" + normalizedNewName + "'");
+                            } catch (Exception e) {
+                                return Either.left("Error renaming data label at " + addr + ": " + e.getMessage());
                             }
-                            return Either.left("No data at address: " + addr);
-                        } catch (Exception e) {
-                            return Either.left("Error renaming data: " + e.getMessage());
                         }
+
+                        return Either.right("Successfully " + String.join(" and ", changes) + " at " + addr);
                     })
                     .orElse(Either.left("Invalid address: " + addressStr));
+
+                success = result.isRight();
+                return result;
             } finally {
-                program.endTransaction(tx, true);
+                program.endTransaction(tx, success);
             }
         }).orElse(Either.left("No program loaded"));
     }
@@ -380,6 +456,55 @@ public class GhidraAnalysisService {
     public String getCurrentFunction() {
         return context.getCurrentFunction()
             .orElse(context.isGuiMode() ? "No function at current location" : "Not available in headless mode");
+    }
+
+    public String goToTarget(String target) {
+        try {
+            if (target == null || target.trim().isEmpty()) {
+                return "Error: target is required";
+            }
+            if (!context.isGuiMode()) {
+                return "Not available in headless mode";
+            }
+
+            String normalizedTarget = target.trim();
+            return context.<String>withProgram(program -> {
+                Optional<PluginTool> toolOpt = context.getTool();
+                if (toolOpt.isEmpty()) {
+                    return "Error: GoTo service unavailable";
+                }
+
+                GoToService goToService = toolOpt.get().getService(GoToService.class);
+                if (goToService == null) {
+                    return "Error: GoTo service unavailable";
+                }
+
+                Either<String, Address> parsedAddress = parseAddress(program, normalizedTarget);
+                if (parsedAddress.isRight()) {
+                    Address address = parsedAddress.get();
+                    boolean ok = goToService.goTo(address, program);
+                    if (!ok) {
+                        return "Error: navigation failed for target: " + normalizedTarget;
+                    }
+                    return "Navigated to address: " + address;
+                }
+
+                Either<String, Function> functionResult = findFunctionByName(program, normalizedTarget);
+                if (functionResult.isLeft()) {
+                    return "Function not found: " + normalizedTarget;
+                }
+
+                Function function = functionResult.get();
+                Address functionAddress = function.getEntryPoint();
+                boolean ok = goToService.goTo(functionAddress, program);
+                if (!ok) {
+                    return "Error: navigation failed for target: " + normalizedTarget;
+                }
+                return String.format("Navigated to function: %s @ %s", function.getName(), functionAddress);
+            }).orElse("No program loaded");
+        } catch (Exception e) {
+            return "Error: goto failed: " + e.getMessage();
+        }
     }
 
     // Cross-Reference Operations
@@ -399,8 +524,10 @@ public class GhidraAnalysisService {
 
                         Function fromFunc = program.getFunctionManager().getFunctionContaining(fromAddr);
                         String funcInfo = (fromFunc != null) ? " in " + fromFunc.getName() : "";
+                        String label = getPrimarySymbolLabel(program, fromAddr).fold(err -> "", value -> value);
+                        String labelInfo = label.isEmpty() ? "" : " [label:" + label + "]";
 
-                        refs.add(String.format("From %s%s [%s]", fromAddr, funcInfo, refType.getName()));
+                        refs.add(String.format("From %s%s%s [%s]", fromAddr, funcInfo, labelInfo, refType.getName()));
                     }
 
                     return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
@@ -422,8 +549,10 @@ public class GhidraAnalysisService {
 
                         Function toFunc = program.getFunctionManager().getFunctionContaining(toAddr);
                         String funcInfo = (toFunc != null) ? " in " + toFunc.getName() : "";
+                        String label = getPrimarySymbolLabel(program, toAddr).fold(err -> "", value -> value);
+                        String labelInfo = label.isEmpty() ? "" : " [label:" + label + "]";
 
-                        refs.add(String.format("To %s%s [%s]", toAddr, funcInfo, refType.getName()));
+                        refs.add(String.format("To %s%s%s [%s]", toAddr, funcInfo, labelInfo, refType.getName()));
                     }
 
                     return Either.right(refs.stream().skip(offset).limit(limit).collect(Collectors.toList()));
@@ -861,7 +990,14 @@ public class GhidraAnalysisService {
 
     private Either<String, Address> parseAddress(Program program, String addressStr) {
         try {
-            return Either.right(program.getAddressFactory().getAddress(addressStr));
+            if (addressStr == null || addressStr.trim().isEmpty()) {
+                return Either.left("Invalid address format: " + addressStr);
+            }
+            Address parsed = program.getAddressFactory().getAddress(addressStr.trim());
+            if (parsed == null) {
+                return Either.left("Invalid address format: " + addressStr);
+            }
+            return Either.right(parsed);
         } catch (Exception e) {
             return Either.left("Invalid address format: " + addressStr + " - " + e.getMessage());
         }
@@ -908,6 +1044,22 @@ public class GhidraAnalysisService {
             return header + instructionList;
         } catch (Exception e) {
             return "Error disassembling function: " + e.getMessage();
+        }
+    }
+
+    private Either<String, String> getPrimarySymbolLabel(Program program, Address address) {
+        try {
+            Symbol symbol = program.getSymbolTable().getPrimarySymbol(address);
+            if (symbol == null) {
+                return Either.right("");
+            }
+            String symbolName = symbol.getName();
+            if (symbolName == null || symbolName.trim().isEmpty()) {
+                return Either.right("");
+            }
+            return Either.right(escapeNonAscii(symbolName));
+        } catch (Exception e) {
+            return Either.left("Error resolving primary symbol label at " + address + ": " + e.getMessage());
         }
     }
 

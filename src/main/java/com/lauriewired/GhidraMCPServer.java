@@ -183,10 +183,12 @@ public class GhidraMCPServer {
             sendResponse(exchange, result.fold(err -> err, list -> String.join("\n", list)));
         });
 
-        server.createContext("/renameData", exchange -> {
+        server.createContext("/create_or_update_data_item", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
-            Either<String, String> result = analysisService.renameDataAtAddress(
-                params.get("address"), params.get("newName"));
+            Either<String, String> result = analysisService.createOrUpdateDataItem(
+                params.get("address"),
+                params.get("data_type"),
+                params.get("new_name"));
             sendResponse(exchange, result.fold(err -> err, ok -> ok));
         });
 
@@ -202,6 +204,24 @@ public class GhidraMCPServer {
 
         server.createContext("/get_current_function", exchange -> {
             sendResponse(exchange, analysisService.getCurrentFunction());
+        });
+
+        server.createContext("/goto", exchange -> {
+            try {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parsePostParams(exchange);
+                    String result = analysisService.goToTarget(params.get("target"));
+                    sendResponse(exchange, result != null ? result : "Error: goto returned no response");
+                } else {
+                    exchange.sendResponseHeaders(405, -1);
+                }
+            } catch (Exception e) {
+                try {
+                    sendResponse(exchange, "Error: goto endpoint failed: " + e.getMessage());
+                } catch (Exception ignored) {
+                    System.err.println("Failed to send goto error response: " + e.getMessage());
+                }
+            }
         });
 
         // Server status endpoint - provides mode (Headed vs Headless), GUI flag and program status
