@@ -13,12 +13,13 @@ import argparse
 import logging
 import hashlib
 import os
+import socket
 import subprocess
 import time
 import signal
 import tempfile
 import atexit
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 from mcp.server.fastmcp import FastMCP
 from typing import Optional
@@ -169,10 +170,12 @@ def open_artifact_headless(artifact_path: str) -> str:
         if not os.path.exists(artifact_path):
             return f"Error: Artifact not found: {artifact_path}"
         
-        # Extract port from current ghidra_server_url
-        from urllib.parse import urlparse
+        # Pick a random unused port and update ghidra_server_url to match
+        with socket.socket() as s:
+            s.bind(('', 0))
+            port = s.getsockname()[1]
         parsed_url = urlparse(ghidra_server_url)
-        port = parsed_url.port or 8080  # Default to 8080 if no port specified
+        ghidra_server_url = f"http://{parsed_url.hostname}:{port}/"
         
         # Get Ghidra installation
         try:
