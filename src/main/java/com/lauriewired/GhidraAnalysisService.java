@@ -43,7 +43,8 @@ public class GhidraAnalysisService {
      * instantiating and executing it, and returning its output.
      * <p>
      * The script is created in the user's script directory, loaded and executed with the current Ghidra state.
-     * After execution, the script file is deleted.
+     * After execution, temporary script files created by this method are deleted; existing user scripts
+     * (not created by this service) are left intact.
      *
      * @param scriptName   the name of the script file to create and execute (e.g., "MyScript.java")
      * @param scriptSource the source code of the script to execute
@@ -57,8 +58,9 @@ public class GhidraAnalysisService {
             try {
                 ResourceFile existing = GhidraScriptUtil.findScriptByName(scriptName);
                 if (existing != null && existing.exists()) {
+                    // We're executing an existing user script; do not delete it afterwards
                     return loadScript(existing)
-                        .flatMap(script -> executeScript(script, scriptName))
+                        .flatMap(script -> executeScript(script, scriptName, false))
                         .fold(error -> error, output -> output);
                 } else {
                     return "Error: Script not found: " + scriptName;
@@ -68,19 +70,28 @@ public class GhidraAnalysisService {
             }
         }
 
+        // We created the script file from provided source; delete it after execution
         return createScriptFile(scriptName, scriptSource)
             .flatMap(scriptFile -> loadScript(scriptFile))
-            .flatMap(script -> executeScript(script, scriptName))
+            .flatMap(script -> executeScript(script, scriptName, true))
             .fold(error -> error, output -> output);
     }
 
     private Either<String, ResourceFile> createScriptFile(String scriptName, String scriptSource) {
         try {
             ResourceFile scriptDir = GhidraScriptUtil.getUserScriptDirectory();
-            File scriptFile = new File(scriptDir.getFile(false), scriptName);
+            File targetDir = scriptDir.getFile(false);
+            File scriptFile = new File(targetDir, scriptName);
+
+            // If a script with this name already exists, fail instead of overwriting.
+            if (scriptFile.exists()) {
+                return Either.left("Script already exists: " + scriptName);
+            }
+
             try (FileWriter writer = new FileWriter(scriptFile)) {
                 writer.write(scriptSource);
             }
+
             return Either.right(new ResourceFile(scriptFile));
         } catch (IOException e) {
             Msg.error(this, "Error writing script file: " + e.getMessage());
@@ -106,7 +117,7 @@ public class GhidraAnalysisService {
             .orElse(Either.left("No attempts made"));
     }
 
-    private Either<String, String> executeScript(GhidraScript script, String scriptName) {
+    private Either<String, String> executeScript(GhidraScript script, String scriptName, boolean deleteAfter) {
         try {
             StringWriter stringWriter = new StringWriter();
             PrintWriter outWriter = new PrintWriter(stringWriter);
@@ -115,7 +126,9 @@ public class GhidraAnalysisService {
         } catch (Exception e) {
             return Either.left("Error running script: " + e.getMessage());
         } finally {
-            cleanupScriptFile(scriptName);
+            if (deleteAfter) {
+                cleanupScriptFile(scriptName);
+            }
         }
     }
 
