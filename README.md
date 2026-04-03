@@ -42,15 +42,14 @@ The new `open_artifact_headless` tool allows you to automatically start Ghidra h
 
 ### Usage
 ```bash
-# Start the MCP bridge (optionally specify Ghidra server URL)
-python bridge_mcp_ghidra.py --enable-headless-tools --ghidra-server http://127.0.0.1:8080/
+# Start the MCP bridge with headless tools enabled
+python bridge_mcp_ghidra.py --enable-headless-tools
 
 # Then use the headless tools through your MCP client
-# This will automatically:
+# open_artifact_headless will automatically:
 # 1. Kill any existing Ghidra processes
-# 2. Start analyzeHeadless in the background 
-# 3. Set up the MCP server (using the port from --ghidra-server URL)
-# 4. Wait for the server to become available
+# 2. Start analyzeHeadless in the background on a random available port
+# 3. Wait for the server to become available
 ```
 
 # Features
@@ -98,7 +97,7 @@ To set up Claude Desktop as a Ghidra MCP client, go to `Claude` -> `Settings` ->
       "command": "python",
       "args": [
         "/ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py",
-        "--ghidra-server",
+        "--default-ghidra-server",
         "http://127.0.0.1:8080/"
       ]
     }
@@ -111,13 +110,13 @@ Alternatively, edit this file directly:
 /Users/YOUR_USER/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
-The server IP and port are configurable and should be set to point to the target Ghidra instance. If not set, both will default to localhost:8080.
+The `--default-ghidra-server` URL should point to your running Ghidra instance. If omitted, you must call the `set_ghidra_server` tool before issuing any analysis commands (see below).
 
 ## Example 2: Cline
 To use GhidraMCP with [Cline](https://cline.bot), this requires manually running the MCP server as well. First run the following command:
 
 ```
-python bridge_mcp_ghidra.py --transport sse --mcp-host 127.0.0.1 --mcp-port 8081 --ghidra-server http://127.0.0.1:8080/
+python bridge_mcp_ghidra.py --transport sse --mcp-host 127.0.0.1 --mcp-port 8081 --default-ghidra-server http://127.0.0.1:8080/
 ```
 
 The only *required* argument is the transport. If all other arguments are unspecified, they will default to the above. Once the MCP server is running, open up Cline and select `MCP Servers` at the top.
@@ -128,6 +127,16 @@ Then select `Remote Servers` and add the following, ensuring that the url matche
 
 1. Server Name: GhidraMCP
 2. Server URL: `http://127.0.0.1:8081/sse`
+
+## Configuring the Ghidra Server URL at Runtime
+
+If you start the bridge without `--default-ghidra-server`, or need to switch to a different Ghidra instance, use the `set_ghidra_server` MCP tool:
+
+```
+set_ghidra_server("http://127.0.0.1:8080/")
+```
+
+This updates the target URL immediately without restarting the bridge. All subsequent analysis commands will use the new URL.
 
 ## Example 3: 5ire
 Another MCP client that supports multiple models on the backend is [5ire](https://github.com/nanbingxyz/5ire). To set up GhidraMCP, open 5ire and go to `Tools` -> `New` and set the following configurations:

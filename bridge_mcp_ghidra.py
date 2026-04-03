@@ -24,14 +24,12 @@ from urllib.parse import urljoin, urlparse
 from mcp.server.fastmcp import FastMCP
 from typing import Optional
 
-DEFAULT_GHIDRA_SERVER = "http://127.0.0.1:8080/"
-
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("ghidra-mcp")
 
-# Initialize ghidra_server_url with default value
-ghidra_server_url = DEFAULT_GHIDRA_SERVER
+# None until set via --default-ghidra-server, open_artifact_headless, or set_ghidra_server
+ghidra_server_url = None
 
 # Global variables to track the current Ghidra headless process
 current_ghidra_process = None
@@ -90,6 +88,8 @@ def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
     """
     Perform a GET request with optional query parameters.
     """
+    if ghidra_server_url is None:
+        return ["Error: No Ghidra server configured. Use set_ghidra_server or open_artifact_headless first."]
     if params is None:
         params = {}
 
@@ -106,6 +106,8 @@ def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
         return [f"Request failed: {str(e)}"]
 
 def safe_post(endpoint: str, data: dict | str) -> str:
+    if ghidra_server_url is None:
+        return "Error: No Ghidra server configured. Use set_ghidra_server or open_artifact_headless first."
     try:
         url = urljoin(ghidra_server_url, endpoint)
         if isinstance(data, dict):
@@ -123,6 +125,8 @@ def safe_post(endpoint: str, data: dict | str) -> str:
 
 def safe_get_json(endpoint: str) -> dict | None:
     """GET an endpoint and parse JSON; return None on error."""
+    if ghidra_server_url is None:
+        return None
     try:
         if (r := requests.get(urljoin(ghidra_server_url, endpoint), timeout=5)).ok:
             r.encoding = 'utf-8'
@@ -217,8 +221,8 @@ def open_artifact_headless(artifact_path: str) -> str:
         with socket.socket() as s:
             s.bind(('', 0))
             port = s.getsockname()[1]
-        parsed_url = urlparse(ghidra_server_url)
-        ghidra_server_url = f"http://{parsed_url.hostname}:{port}/"
+        hostname = urlparse(ghidra_server_url).hostname if ghidra_server_url else "127.0.0.1"
+        ghidra_server_url = f"http://{hostname}:{port}/"
         
         # Get Ghidra installation
         try:
@@ -720,6 +724,13 @@ def export_data(address: str, length: int) -> dict:
     except Exception as e:
         return {"error": f"Error processing hex data: {str(e)}"}
 
+@mcp.tool()
+def set_ghidra_server(url: str) -> str:
+    """Change the Ghidra server URL at runtime. Use this to point at a headed Ghidra instance (or any running GhidraMCP HTTP server) without restarting the MCP server. Required if --default-ghidra-server was not passed at startup and you are not using open_artifact_headless."""
+    global ghidra_server_url
+    ghidra_server_url = url if url.endswith("/") else url + "/"
+    return f"Ghidra server URL set to {ghidra_server_url}\n\n{get_ghidra_status()}"
+
 def cleanup_ghidra_processes():
     """Clean up any tracked Ghidra processes and temp directories."""
     global current_ghidra_process, current_project_dir
@@ -751,8 +762,8 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     parser = argparse.ArgumentParser(description="MCP server for Ghidra")
-    parser.add_argument("--ghidra-server", type=str, default=DEFAULT_GHIDRA_SERVER,
-                        help=f"Ghidra server URL, default: {DEFAULT_GHIDRA_SERVER}")
+    parser.add_argument("--default-ghidra-server", type=str, default=None,
+                        help="Default Ghidra server URL (e.g. http://127.0.0.1:8080/). If omitted, you must either use open_artifact_headless or call set_ghidra_server before issuing any analysis commands.")
     parser.add_argument("--mcp-host", type=str, default="127.0.0.1",
                         help="Host to run MCP server on (only used for sse), default: 127.0.0.1")
     parser.add_argument("--mcp-port", type=int,
@@ -763,10 +774,9 @@ def main():
                         help="Enable headless tools (open_artifact_headless, close_ghidra_headless, get_ghidra_status)")
     args = parser.parse_args()
     
-    # Use the global variable to ensure it's properly updated
     global ghidra_server_url
-    if args.ghidra_server:
-        ghidra_server_url = args.ghidra_server
+    if args.default_ghidra_server:
+        ghidra_server_url = args.default_ghidra_server
     
     # Register headless tools if enabled
     if args.enable_headless_tools:
