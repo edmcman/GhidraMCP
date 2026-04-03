@@ -649,18 +649,22 @@ def list_strings(offset: int = 0, limit: int = 2000, filter: Optional[str] = Non
     return safe_get("strings", params)
 
 @mcp.tool()
-def run_ghidra_script(name: str, script: str) -> str:
+def run_ghidra_script(name: str, script: Optional[str] = None) -> str:
     """
     Run a Ghidra script and return its output.
 
     Args:
-        name: The name of the script file, including the extension (e.g., "MyScript.java" or "MyScript.py")
-        script: The source code for the script to run
+        name: The name of the script file, including the extension (e.g., "MyScript.java" or "MyScript.py").
+        script: Optional. The source code for the script to run. If omitted or an empty string,
+            the server will attempt to execute an existing user script with the given name.
 
     Returns:
         Output printed by the script, or an error message if execution fails.
     """
-    params = {"script": script, "name": name}
+    params = {"name": name}
+    # Only include the script body when provided to avoid sending the literal string 'None'
+    if script is not None:
+        params["script"] = script
     return safe_post("run_script", params)
         
 @mcp.tool()
