@@ -46,14 +46,14 @@ The Python bridge (`bridge_mcp_ghidra.py`) converts between protocols:
 3. **Output**: `target/GhidraMCP-1.0-SNAPSHOT.zip` (Ghidra extension)
 
 ### Testing Modes
-- **GUI Testing**: Install ZIP in Ghidra, load binary, check `http://localhost:8080/methods`
+- **GUI Testing**: Install ZIP in Ghidra, load binary, check the GhidraMCP Status window for the port, then `http://127.0.0.1:<port>/methods`
 - **Headless Testing**: Use `analyzeHeadless` with `HeadlessMCPServerScript.java`
 - **MCP Testing**: Run `bridge_mcp_ghidra.py` and connect MCP client
 
 ### Port Configuration
-- GUI: `File → Configure → Developer → GhidraMCP HTTP Server`
-- Headless: `GHIDRA_MCP_PORT` environment variable
-- MCP Bridge: `--ghidra-server` argument
+- GUI: random OS-assigned port; shown in the **GhidraMCP Status** window (auto-opens on plugin load)
+- Headless: `GHIDRA_MCP_PORT` environment variable (default 8080)
+- MCP Bridge: `--default-ghidra-server` argument
 
 ## Key File Patterns
 
@@ -94,7 +94,7 @@ Python bridge exposes these core tool categories:
 
 ### Server Connection Issues
 1. Check Ghidra plugin is enabled and program loaded
-2. Verify port configuration matches client expectations
+2. Check the GhidraMCP Status window for the current port and verify it matches what the client is using
 3. Test direct HTTP endpoints before MCP bridge
 
 ### Headless Mode Problems

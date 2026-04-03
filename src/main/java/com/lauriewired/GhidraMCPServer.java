@@ -27,19 +27,21 @@ public class GhidraMCPServer {
     private HttpServer server;
     private final GhidraAnalysisService analysisService;
     private final GhidraContext context;
-    private final int port;
 
-    public GhidraMCPServer(GhidraAnalysisService analysisService, GhidraContext context, int port) {
+    public GhidraMCPServer(GhidraAnalysisService analysisService, GhidraContext context) {
         this.analysisService = analysisService;
         this.context = context;
-        this.port = port;
     }
 
     public void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress(port), 0);
+        server = HttpServer.create(new InetSocketAddress(0), 0);
         setupEndpoints();
         server.setExecutor(null);
         server.start();
+    }
+
+    public int getPort() {
+        return server.getAddress().getPort();
     }
 
     private void sendJsonResponse(HttpExchange exchange, Map<String, Object> response) throws IOException {

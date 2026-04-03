@@ -6,7 +6,6 @@ import ghidra.framework.plugintool.PluginTool;
 import ghidra.framework.plugintool.PluginInfo;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.app.plugin.PluginCategoryNames;
-import ghidra.framework.options.Options;
 import ghidra.util.Msg;
 import java.util.Optional;
 
@@ -17,63 +16,46 @@ import java.util.Optional;
     packageName = ghidra.app.CorePluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "HTTP server plugin",
-    description = "Starts an embedded HTTP server to expose program data. Port configurable via Tool Options."
+    description = "Starts an embedded HTTP server to expose program data. The bound port is shown in the GhidraMCP Status window."
 )
 public class GhidraMCPPlugin extends Plugin {
     private Optional<GhidraMCPServer> mcpServer = Optional.empty();
     private final GuiGhidraContext context;
-    private static final String OPTION_CATEGORY_NAME = "GhidraMCP HTTP Server";
-    private static final String PORT_OPTION_NAME = "Server Port";
-    private static final int DEFAULT_PORT = 8080;
+    private GhidraMCPStatusProvider statusProvider;
 
     public GhidraMCPPlugin(PluginTool tool) {
         super(tool);
         this.context = new GuiGhidraContext(tool);
-        
+
         Msg.info(this, "GhidraMCP Plugin loading...");
-        
-        registerOptions();
-        startServer();  // Start server immediately, regardless of program state
-        
+        startServer();
         Msg.info(this, "GhidraMCP Plugin loaded!");
     }
 
     private void startServer() {
-        int port = getConfiguredPort();
-        
-        stopServer(); // Stop existing server if any
-        
+        stopServer();
+
         try {
             GhidraAnalysisService analysisService = new GhidraAnalysisService(context);
-            mcpServer = Optional.of(new GhidraMCPServer(analysisService, context, port));
-            mcpServer.ifPresent(server -> {
-                try {
-                    server.start();
-                    context.showMessage("GhidraMCP server started on port " + port);
-                } catch (Exception e) {
-                    context.showError("Failed to start server: " + e.getMessage());
-                }
-            });
+            GhidraMCPServer server = new GhidraMCPServer(analysisService, context);
+            server.start();
+            mcpServer = Optional.of(server);
+            int port = server.getPort();
+            statusProvider = new GhidraMCPStatusProvider(tool, port);
+            tool.addComponentProvider(statusProvider, true);
+            context.showMessage("GhidraMCP server started on port " + port);
         } catch (Exception e) {
             context.showError("Server initialization failed: " + e.getMessage());
         }
     }
 
     private void stopServer() {
+        if (statusProvider != null) {
+            tool.removeComponentProvider(statusProvider);
+            statusProvider = null;
+        }
         mcpServer.ifPresent(GhidraMCPServer::stop);
         mcpServer = Optional.empty();
-    }
-
-    private int getConfiguredPort() {
-        return tool.getOptions(OPTION_CATEGORY_NAME)
-            .getInt(PORT_OPTION_NAME, DEFAULT_PORT);
-    }
-
-    private void registerOptions() {
-        Options options = tool.getOptions(OPTION_CATEGORY_NAME);
-        options.registerOption(PORT_OPTION_NAME, DEFAULT_PORT, null,
-            "The network port number the embedded HTTP server will listen on. " +
-            "Requires Ghidra restart or plugin reload to take effect after changing.");
     }
 
     @Override
