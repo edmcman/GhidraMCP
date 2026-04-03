@@ -52,6 +52,22 @@ public class GhidraAnalysisService {
      * @throws Exception   if there is an error during script instantiation or execution (caught and returned as error message)
      */
     public String runScript(String scriptName, String scriptSource) {
+        // If script source is empty or null, try to execute an existing script by name
+        if (scriptSource == null || scriptSource.trim().isEmpty()) {
+            try {
+                ResourceFile existing = GhidraScriptUtil.findScriptByName(scriptName);
+                if (existing != null && existing.exists()) {
+                    return loadScript(existing)
+                        .flatMap(script -> executeScript(script, scriptName))
+                        .fold(error -> error, output -> output);
+                } else {
+                    return "Error: Script not found: " + scriptName;
+                }
+            } catch (Exception e) {
+                return "Error locating existing script: " + e.getMessage();
+            }
+        }
+
         return createScriptFile(scriptName, scriptSource)
             .flatMap(scriptFile -> loadScript(scriptFile))
             .flatMap(script -> executeScript(script, scriptName))
