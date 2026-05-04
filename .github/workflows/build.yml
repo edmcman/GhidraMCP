@@ -1,4 +1,4 @@
-name: Build with Maven
+name: Build with Gradle
 
 on:
   push:
@@ -29,7 +29,7 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-        cache: maven
+        cache: gradle
 
     - name: Download Ghidra
       run: |
@@ -44,13 +44,15 @@ jobs:
           cp ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC/Ghidra/${libfile} ./lib/
         done
 
-    - name: Build with Maven
-      run: mvn clean package assembly:single
+    - name: Build with Gradle
+      env:
+        GHIDRA_INSTALL_DIR: ${{ github.workspace }}/ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC
+      run: ./gradlew buildExtension
 
     - name: Assemble release directory
       run: |
         mkdir release
-        cp target/GhidraMCP-*-SNAPSHOT.zip release/
+        cp dist/GhidraMCP*.zip release/
         cp bridge_mcp_ghidra.py release/
 
     - name: Upload artifact
