@@ -30,9 +30,9 @@ public class HeadlessMCPServerScript extends GhidraScript {
     private boolean startServerAndWait(HeadlessGhidraContext context, int port) {
         try {
             GhidraAnalysisService service = new GhidraAnalysisService(context);
-            GhidraMCPServer server = new GhidraMCPServer(service, context, port);
+            GhidraMCPServer server = new GhidraMCPServer(service, context);
             
-            server.start();
+            server.start(port);
             println("Server started. Press Ctrl+C to stop.");
             
             waitForCancellation();

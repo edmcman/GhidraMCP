@@ -34,7 +34,11 @@ public class GhidraMCPServer {
     }
 
     public void start() throws IOException {
-        server = HttpServer.create(new InetSocketAddress(0), 0);
+        start(0);
+    }
+
+    public void start(int port) throws IOException {
+        server = HttpServer.create(new InetSocketAddress(port), 0);
         setupEndpoints();
         server.setExecutor(null);
         server.start();
