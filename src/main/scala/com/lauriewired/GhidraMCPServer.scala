@@ -11,7 +11,7 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
   def start(): Unit = start(0)
 
   def start(port: Int): Unit =
-    val s = HttpServer.create(new InetSocketAddress(port), 0)
+    val s = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0)
     setupEndpoints(s)
     s.setExecutor(null)
     s.start()
@@ -87,21 +87,30 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
     })
 
     s.createContext("/renameFunction", exchange => {
-      val p = parsePostParams(exchange)
-      sendResponse(exchange, analysisService.renameFunction(
-        p.getOrElse("oldName", ""), p.getOrElse("newName", "")).fold(identity, identity))
+      if exchange.getRequestMethod == "POST" then
+        val p = parsePostParams(exchange)
+        sendResponse(exchange, analysisService.renameFunction(
+          p.getOrElse("oldName", ""), p.getOrElse("newName", "")).fold(identity, identity))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/rename_function_by_address", exchange => {
-      val p = parsePostParams(exchange)
-      sendResponse(exchange, analysisService.renameFunctionByAddress(
-        p.getOrElse("function_address", ""), p.getOrElse("new_name", "")).fold(identity, identity))
+      if exchange.getRequestMethod == "POST" then
+        val p = parsePostParams(exchange)
+        sendResponse(exchange, analysisService.renameFunctionByAddress(
+          p.getOrElse("function_address", ""), p.getOrElse("new_name", "")).fold(identity, identity))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/create_or_update_data_item", exchange => {
-      val p = parsePostParams(exchange)
-      sendResponse(exchange, analysisService.createOrUpdateDataItem(
-        p.getOrElse("address", ""), p.getOrElse("data_type", ""), p.getOrElse("new_name", "")).fold(identity, identity))
+      if exchange.getRequestMethod == "POST" then
+        val p = parsePostParams(exchange)
+        sendResponse(exchange, analysisService.createOrUpdateDataItem(
+          p.getOrElse("address", ""), p.getOrElse("data_type", ""), p.getOrElse("new_name", "")).fold(identity, identity))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/get_function_by_address", exchange => {
@@ -145,6 +154,8 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
       if exchange.getRequestMethod == "POST" then
         val p = parsePostParams(exchange)
         sendResponse(exchange, analysisService.runScript(p.getOrElse("name", ""), p.getOrElse("script", "")))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/export_functions", exchange => {
@@ -182,9 +193,12 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
     })
 
     s.createContext("/renameVariable", exchange => {
-      val p = parsePostParams(exchange)
-      sendResponse(exchange, analysisService.renameVariableInFunction(
-        p.getOrElse("function", ""), p.getOrElse("old_name", ""), p.getOrElse("new_name", "")))
+      if exchange.getRequestMethod == "POST" then
+        val p = parsePostParams(exchange)
+        sendResponse(exchange, analysisService.renameVariableInFunction(
+          p.getOrElse("function", ""), p.getOrElse("old_name", ""), p.getOrElse("new_name", "")))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/set_local_variable_type", exchange => {
@@ -197,13 +211,16 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
     })
 
     s.createContext("/set_function_prototype", exchange => {
-      val p = parsePostParams(exchange)
-      val addr = p.getOrElse("function_address", "")
-      val proto = p.getOrElse("prototype", "")
-      if addr.isEmpty || proto.isEmpty then
-        sendResponse(exchange, "Error: function_address and prototype parameters are required")
+      if exchange.getRequestMethod == "POST" then
+        val p = parsePostParams(exchange)
+        val addr = p.getOrElse("function_address", "")
+        val proto = p.getOrElse("prototype", "")
+        if addr.isEmpty || proto.isEmpty then
+          sendResponse(exchange, "Error: function_address and prototype parameters are required")
+        else
+          sendResponse(exchange, analysisService.setFunctionPrototype(addr, proto))
       else
-        sendResponse(exchange, analysisService.setFunctionPrototype(addr, proto))
+        exchange.sendResponseHeaders(405, -1)
     })
 
     s.createContext("/export_data", exchange => {
@@ -223,8 +240,11 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
     })
 
     s.createContext("/create_type_from_c_definition", exchange => {
-      sendResponse(exchange, analysisService.createTypeFromCDefinition(
-        parsePostParams(exchange).getOrElse("definition", "")))
+      if exchange.getRequestMethod == "POST" then
+        sendResponse(exchange, analysisService.createTypeFromCDefinition(
+          parsePostParams(exchange).getOrElse("definition", "")))
+      else
+        exchange.sendResponseHeaders(405, -1)
     })
 
   // Response Helpers
@@ -266,8 +286,10 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
       .getOrElse(Map.empty)
 
   private def parsePostParams(exchange: HttpExchange): Map[String, String] =
-    new String(exchange.getRequestBody.readAllBytes(), StandardCharsets.UTF_8)
-      .split("&").flatMap(decodePair).toMap
+    scala.util.Using.resource(exchange.getRequestBody) { is =>
+      new String(is.readAllBytes(), StandardCharsets.UTF_8)
+        .split("&").flatMap(decodePair).toMap
+    }
 
   private def decodePair(pair: String): Option[(String, String)] =
     pair.split("=", 2) match

@@ -9,7 +9,7 @@ import ghidra.util.Msg
 
 class GuiGhidraContext(tool: PluginTool) extends GhidraContext:
   override def getCurrentProgram(): Option[Program] =
-    Option(tool.getService(classOf[ProgramManager])).map(_.getCurrentProgram)
+    Option(tool.getService(classOf[ProgramManager])).flatMap(pm => Option(pm.getCurrentProgram))
 
   override def getTaskMonitor(): TaskMonitor = TaskMonitor.DUMMY
 
