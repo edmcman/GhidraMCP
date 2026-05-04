@@ -186,19 +186,19 @@ public class GhidraAnalysisService {
     }
 
     public String decompileFunctionByName(String name) {
-        return context.<String>withProgram(program -> 
+        return context.<String>withProgram(program ->
             findFunctionByName(program, name)
-                .flatMap(func -> decompileFunction(program, func))
-                .fold(err -> "Function not found: " + err, output -> output)
+                .fold(err -> "Function not found: " + err,
+                      func -> decompileFunction(program, func).fold(err -> err, output -> output))
         ).orElse("No program loaded");
     }
 
     public String decompileFunctionByAddress(String addressStr) {
-        return context.<String>withProgram(program -> 
+        return context.<String>withProgram(program ->
             parseAddress(program, addressStr)
                 .flatMap(addr -> findFunctionByAddress(program, addr))
-                .flatMap(func -> decompileFunction(program, func))
-                .fold(err -> "Function not found at address: " + err, output -> output)
+                .fold(err -> "Function not found at address: " + err,
+                      func -> decompileFunction(program, func).fold(err -> err, output -> output))
         ).orElse("No program loaded");
     }
 
@@ -1034,19 +1034,25 @@ public class GhidraAnalysisService {
 
     private Either<String, String> decompileFunction(Program program, Function function) {
         DecompInterface decomp = new DecompInterface();
-        decomp.openProgram(program);
-        
-        DecompileResults results = decomp.decompileFunction(function, 30, context.getTaskMonitor());
-        if (results == null) {
-            return Either.left("Decompilation returned null");
-        }
-        if (!results.decompileCompleted()) {
-            return Either.left("Decompilation failed");
-        }
         try {
-            return Either.right(results.getDecompiledFunction().getC());
-        } catch (Exception e) {
-            return Either.left("Error extracting decompiled C: " + e.getMessage());
+            if (!decomp.openProgram(program)) {
+                return Either.left("Decompiler failed to open program");
+            }
+            DecompileResults results = decomp.decompileFunction(function, 30, context.getTaskMonitor());
+            if (results == null) {
+                return Either.left("Decompiler returned null");
+            }
+            if (!results.decompileCompleted()) {
+                String msg = results.getErrorMessage();
+                return Either.left("Decompilation failed" + (msg != null && !msg.isEmpty() ? ": " + msg : ""));
+            }
+            try {
+                return Either.right(results.getDecompiledFunction().getC());
+            } catch (Exception e) {
+                return Either.left("Error extracting decompiled C: " + e.getMessage());
+            }
+        } finally {
+            decomp.dispose();
         }
     }
 
