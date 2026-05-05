@@ -4,18 +4,26 @@ import com.lauriewired.context.GhidraContext
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import java.net.{InetSocketAddress, URLDecoder}
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.{ExecutorService, Executors}
 
 class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraContext):
   private var server: Option[HttpServer] = None
+  private var executor: Option[ExecutorService] = None
 
   def start(): Unit = start(0)
 
   def start(port: Int): Unit =
     val s = HttpServer.create(new InetSocketAddress(port), 0)
     setupEndpoints(s)
-    s.setExecutor(null)
+    val exec = Executors.newCachedThreadPool(r => {
+      val t = new Thread(r)
+      t.setDaemon(true)
+      t
+    })
+    s.setExecutor(exec)
     s.start()
     server = Some(s)
+    executor = Some(exec)
 
   def getPort(): Int = server.map(_.getAddress.getPort).getOrElse(-1)
 
@@ -24,7 +32,9 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
       s.stop(1)
       println("GhidraMCP HTTP server stopped")
     }
+    executor.foreach(_.shutdownNow())
     server = None
+    executor = None
 
   private def setupEndpoints(s: HttpServer): Unit =
     def listEndpoint(path: String, fn: (Int, Int) => Either[String, List[String]]): Unit =
