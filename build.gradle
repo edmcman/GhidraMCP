@@ -47,6 +47,8 @@ else {
 }
 //----------------------END "DO NOT MODIFY" SECTION------------------------------
 
+apply plugin: 'scala'
+
 repositories {
 	// Declare dependency repositories here. This is not needed if dependencies are manually 
 	// dropped into the lib/ directory.
@@ -57,8 +59,8 @@ repositories {
 
 dependencies {
 	// Any external dependencies added here will automatically be copied to the lib/ directory when
-	// this extension is built.	
-	implementation 'io.vavr:vavr:0.10.4'
+	// this extension is built.
+	implementation 'org.scala-lang:scala3-library_3:3.6.4'
 }
 
 // Exclude additional files from the built extension
