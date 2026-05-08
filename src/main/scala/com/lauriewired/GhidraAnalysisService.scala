@@ -44,6 +44,7 @@ class GhidraAnalysisService(context: GhidraContext):
     try
       val scriptDir = GhidraScriptUtil.getUserScriptDirectory()
       val targetDir = scriptDir.getFile(false)
+      targetDir.mkdirs()
       val scriptFile = new File(targetDir, scriptName)
       if scriptFile.exists then Left(s"Script already exists: $scriptName")
       else
