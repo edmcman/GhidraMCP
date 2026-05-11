@@ -73,7 +73,8 @@ class GhidraAnalysisService(context: GhidraContext):
   private def executeScript(script: GhidraScript, scriptName: String, deleteAfter: Boolean): Either[String, String] =
     try
       val sw = new StringWriter()
-      script.execute(getState(), TaskMonitor.DUMMY, new PrintWriter(sw))
+      val pw = new PrintWriter(sw)
+      script.execute(getState(), new ScriptControls(pw, pw, TaskMonitor.DUMMY))
       Right(sw.toString)
     catch case e: Exception => Left(s"Error running script: ${e.getMessage}")
     finally
@@ -502,12 +503,12 @@ class GhidraAnalysisService(context: GhidraContext):
   // ==================
 
   def setDecompilerComment(addressStr: String, comment: String): Boolean =
-    setCommentAtAddress(addressStr, comment, CodeUnit.PRE_COMMENT, "Set decompiler comment")
+    setCommentAtAddress(addressStr, comment, CommentType.PRE, "Set decompiler comment")
 
   def setDisassemblyComment(addressStr: String, comment: String): Boolean =
-    setCommentAtAddress(addressStr, comment, CodeUnit.EOL_COMMENT, "Set disassembly comment")
+    setCommentAtAddress(addressStr, comment, CommentType.EOL, "Set disassembly comment")
 
-  private def setCommentAtAddress(addressStr: String, comment: String, commentType: Int, transactionName: String): Boolean =
+  private def setCommentAtAddress(addressStr: String, comment: String, commentType: CommentType, transactionName: String): Boolean =
     context.withProgram { program =>
       val tx = program.startTransaction(transactionName)
       try
