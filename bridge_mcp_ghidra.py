@@ -6,7 +6,6 @@
 # ]
 # ///
 
-import base64
 import sys
 import requests
 import argparse
@@ -692,7 +691,6 @@ def export_data(address: str, length: int) -> dict:
     Returns:
         Dictionary containing:
         - str_data: String representation of the raw bytes
-        - base64: Base64 encoded raw bytes
         - hex: Hex bytes formatted with spaces (e.g. "00 01 02")
         - sha256: SHA256 hash for verification
         - error: Error message if operation failed
@@ -710,17 +708,13 @@ def export_data(address: str, length: int) -> dict:
         
         # Calculate SHA256 hash
         sha256_hash = hashlib.sha256(raw_bytes).hexdigest()
-        
-        # Encode as base64
-        base64_data = base64.b64encode(raw_bytes).decode('ascii')
-        
+
         # Format as hex bytes with spaces
         hex_formatted = ' '.join(f'{b:02x}' for b in raw_bytes)
-        
+
         # Return structured data with separate fields
         return {
             "str_data": str(raw_bytes),
-            "base64": base64_data,
             "hex": hex_formatted,
             "sha256": sha256_hash,
         }
