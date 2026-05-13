@@ -41,7 +41,7 @@ jobs:
     - name: Assemble release directory
       run: |
         mkdir release
-        cp dist/GhidraMCP*.zip release/
+        cp dist/*_GhidraMCP.zip release/
         cp bridge_mcp_ghidra.py release/
 
     - name: Upload artifact
