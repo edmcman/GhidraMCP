@@ -62,9 +62,9 @@ Ghidra APIs (Program, FunctionManager, DecompInterface, etc.)
 - **Java** only for `HeadlessMCPServerScript.java` (Ghidra script API requires Java)
 - **Python 3.10+** for the MCP bridge — uses `mcp` SDK (`FastMCP`), `requests`
 - **Vavr** (0.10.4) in `lib/` — functional library for Scala/Java
-- **Ghidra JARs** in `lib/` — not in git, downloaded by CI from Ghidra 11.3.2
+- **Ghidra JARs** resolved at build time from `GHIDRA_INSTALL_DIR`
 - Extension metadata in `extension.properties` and `Module.manifest`
 
 ## CI
 
-GitHub Actions (`.github/workflows/build.yml`): sets up JDK 21, downloads Ghidra 11.3.2, copies 7 JARs to `lib/`, runs `./gradlew buildExtension`, assembles release ZIP with `bridge_mcp_ghidra.py`.
+GitHub Actions (`.github/workflows/build.yml`): sets up JDK 21, downloads Ghidra 12.0.4, runs `./gradlew buildExtension`, assembles release ZIP with `bridge_mcp_ghidra.py`.
