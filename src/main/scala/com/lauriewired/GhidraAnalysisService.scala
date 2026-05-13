@@ -57,18 +57,19 @@ class GhidraAnalysisService(context: GhidraContext):
       Left(s"Failed to create script file: ${e.getMessage}")
 
   private def loadScript(scriptFile: ResourceFile): Either[String, GhidraScript] =
-    Iterator.range(0, 3)
-      .map { attempt =>
-        try
-          if attempt > 0 then Thread.sleep(1000)
-          val provider = GhidraScriptUtil.getProvider(scriptFile)
-          Right(provider.getScriptInstance(scriptFile, new PrintWriter(System.err)))
-        catch case e: Exception =>
-          Msg.error(this, s"Script load attempt ${attempt + 1} failed: ${e.getMessage}")
-          Left(e.getMessage)
-      }
-      .find(_.isRight)
-      .getOrElse(Left("No attempts made"))
+    val errors = Iterator.range(0, 3).map { attempt =>
+      try
+        if attempt > 0 then Thread.sleep(1000)
+        val provider = GhidraScriptUtil.getProvider(scriptFile)
+        Right(provider.getScriptInstance(scriptFile, new PrintWriter(System.err)))
+      catch case e: Exception =>
+        Msg.error(this, s"Script load attempt ${attempt + 1} failed: ${e.getMessage}")
+        Left(e.getMessage)
+    }.toList
+    errors.find(_.isRight).getOrElse {
+      val details = errors.collect { case Left(e) => e }.mkString("; ")
+      Left(s"Failed to load script after 3 attempts: $details")
+    }
 
   private def executeScript(script: GhidraScript, scriptName: String, deleteAfter: Boolean): Either[String, String] =
     try

@@ -135,7 +135,7 @@ def safe_get_json(endpoint: str) -> dict | None:
     return None
 
 def kill_existing_ghidra_processes():
-    """Kill any existing analyzeHeadless processes using global process tracking."""
+    """Kill any existing Ghidra headless processes using global process tracking."""
     global current_ghidra_process
     killed_count = 0
     
@@ -173,10 +173,10 @@ def get_ghidra_install_dir():
         raise ValueError("GHIDRA_INSTALL_DIR environment variable is not set")
     if not os.path.exists(ghidra_dir):
         raise ValueError(f"GHIDRA_INSTALL_DIR path does not exist: {ghidra_dir}")
-    analyze_headless = os.path.join(ghidra_dir, "support", "analyzeHeadless")
-    if not os.path.exists(analyze_headless):
-        raise ValueError(f"analyzeHeadless not found at: {analyze_headless}")
-    return ghidra_dir, analyze_headless
+    pyghidra_run = os.path.join(ghidra_dir, "support", "pyghidraRun")
+    if not os.path.exists(pyghidra_run):
+        raise ValueError(f"pyghidraRun not found at: {pyghidra_run}")
+    return ghidra_dir, pyghidra_run
 
 def check_headless_tools_enabled() -> str | None:
     """
@@ -225,7 +225,7 @@ def open_artifact_headless(artifact_path: str) -> str:
         
         # Get Ghidra installation
         try:
-            ghidra_dir, analyze_headless = get_ghidra_install_dir()
+            ghidra_dir, pyghidra_run = get_ghidra_install_dir()
         except ValueError as e:
             return f"Error: {str(e)}"
         
@@ -251,9 +251,10 @@ def open_artifact_headless(artifact_path: str) -> str:
         env = os.environ.copy()
         env['GHIDRA_MCP_PORT'] = str(port)
         
-        # Build command
+        # Build command - use pyghidraRun -H to start with Python support enabled
         cmd = [
-            analyze_headless,
+            pyghidra_run,
+            "-H",
             current_project_dir,
             project_name,
             "-overwrite",
@@ -347,7 +348,7 @@ def get_ghidra_status() -> str:
 
     The function prefers the server's `/status` JSON endpoint for authoritative
     information. If `/status` is unavailable and `--enable-headless-tools` is
-    enabled, it falls back to checking the bridge's tracked analyzeHeadless process.
+    enabled, it falls back to checking the bridge's tracked Ghidra headless process.
     """
     global current_ghidra_process
     
