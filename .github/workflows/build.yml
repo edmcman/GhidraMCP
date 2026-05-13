@@ -20,7 +20,15 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Cache Ghidra
+      id: cache-ghidra
+      uses: actions/cache@v4
+      with:
+        path: ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC
+        key: ghidra-${{ env.GHIDRA_VERSION }}
+
     - name: Download Ghidra
+      if: steps.cache-ghidra.outputs.cache-hit != 'true'
       run: |
         wget --no-verbose -O ghidra.zip https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_${{ env.GHIDRA_VERSION }}_build/ghidra_${{ env.GHIDRA_VERSION }}_PUBLIC_${{ env.GHIDRA_DATE }}.zip
         7z x -bd ghidra.zip
