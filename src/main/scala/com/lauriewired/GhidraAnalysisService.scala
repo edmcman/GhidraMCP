@@ -28,17 +28,17 @@ class GhidraAnalysisService(context: GhidraContext):
       try
         val existing = GhidraScriptUtil.findScriptByName(scriptName)
         if existing != null && existing.exists then
-          loadScript(existing)
-            .flatMap(executeScript(_, scriptName, deleteAfter = false))
-            .fold(identity, identity)
+          prefixError("Running script")(
+            loadScript(existing).flatMap(executeScript(_, scriptName, deleteAfter = false))
+          ).merge
         else s"Error: Script not found: $scriptName"
       catch case e: Exception => s"Error locating existing script: ${e.getMessage}"
     else
-      (for
+      prefixError("Running script")(for
         scriptFile <- createScriptFile(scriptName, scriptSource)
         script     <- loadScript(scriptFile)
         output     <- executeScript(script, scriptName, deleteAfter = true)
-      yield output).fold(identity, identity)
+      yield output).merge
 
   private def createScriptFile(scriptName: String, scriptSource: String): Either[String, ResourceFile] =
     try
@@ -132,11 +132,10 @@ class GhidraAnalysisService(context: GhidraContext):
 
   def getFunctionByAddress(addressStr: String): String =
     context.withProgram { program =>
-      (for
+      prefixError("Getting function by address")(for
         addr <- parseAddress(program, addressStr)
         func <- findFunctionByAddress(program, addr)
-      yield s"Function: ${func.getName} @ ${func.getEntryPoint}")
-        .fold(err => s"No function found at address: $err", identity)
+      yield s"Function: ${func.getName} @ ${func.getEntryPoint}").merge
     }.getOrElse("No program loaded")
 
   // Decompilation
@@ -144,28 +143,27 @@ class GhidraAnalysisService(context: GhidraContext):
 
   def decompileFunctionByName(name: String): String =
     context.withProgram { program =>
-      (for
+      prefixError("Decompiling function by name")(for
         func   <- findFunctionByName(program, name)
         output <- decompileFunction(program, func)
-      yield output).fold(err => s"Function not found: $err", identity)
+      yield output).merge
     }.getOrElse("No program loaded")
 
   def decompileFunctionByAddress(addressStr: String): String =
     context.withProgram { program =>
-      (for
+      prefixError("Decompiling function by address")(for
         addr   <- parseAddress(program, addressStr)
         func   <- findFunctionByAddress(program, addr)
         output <- decompileFunction(program, func)
-      yield output).fold(err => s"Function not found at address: $err", identity)
+      yield output).merge
     }.getOrElse("No program loaded")
 
   def disassembleFunction(addressStr: String): String =
     context.withProgram { program =>
-      (for
+      prefixError("Disassembling function")(for
         addr <- parseAddress(program, addressStr)
         func <- findFunctionByAddress(program, addr)
-      yield disassembleFunctionInstructions(program, func))
-        .fold(err => s"Function not found at address: $err", identity)
+      yield disassembleFunctionInstructions(program, func)).merge
     }.getOrElse("No program loaded")
 
   // Renaming
@@ -175,14 +173,15 @@ class GhidraAnalysisService(context: GhidraContext):
     context.withProgram { program =>
       val tx = program.startTransaction("Rename function")
       try
-        findFunctionByName(program, oldName)
-          .flatMap { func =>
-            try
-              if tryRename(func, newName) then Right("Renamed successfully")
-              else Left("Failed to rename function")
-            catch case e: Exception => Left(s"Failed to rename function: ${e.getMessage}")
-          }
-          .left.map(_ => s"Function '$oldName' not found")
+        prefixError("Renaming function")(
+          findFunctionByName(program, oldName)
+            .flatMap { func =>
+              try
+                if tryRename(func, newName) then Right("Renamed successfully")
+                else Left("Failed to rename function")
+              catch case e: Exception => Left(s"Failed to rename function: ${e.getMessage}")
+            }
+        )
       finally
         program.endTransaction(tx, true)
     }.getOrElse(Left("No program loaded"))
@@ -191,22 +190,23 @@ class GhidraAnalysisService(context: GhidraContext):
     context.withProgram { program =>
       val tx = program.startTransaction("Rename function by address")
       try
-        parseAddress(program, addressStr)
-          .flatMap(findFunctionByAddress(program, _))
-          .flatMap { func =>
-            try
-              if tryRename(func, newName) then Right("Renamed successfully")
-              else Left("Failed to rename function")
-            catch case e: Exception => Left(s"Failed to rename function: ${e.getMessage}")
-          }
-          .left.map(_ => s"No function at address: $addressStr")
+        prefixError("Renaming function by address")(
+          parseAddress(program, addressStr)
+            .flatMap(findFunctionByAddress(program, _))
+            .flatMap { func =>
+              try
+                if tryRename(func, newName) then Right("Renamed successfully")
+                else Left("Failed to rename function")
+              catch case e: Exception => Left(s"Failed to rename function: ${e.getMessage}")
+            }
+        )
       finally
         program.endTransaction(tx, true)
     }.getOrElse(Left("No program loaded"))
 
   def renameVariableInFunction(functionName: String, oldName: String, newName: String): String =
     context.withProgram { program =>
-      findFunctionByName(program, functionName).flatMap { func =>
+      prefixError("Renaming variable")(findFunctionByName(program, functionName).flatMap { func =>
         val decomp = new DecompInterface()
         decomp.openProgram(program)
         val results = decomp.decompileFunction(func, 30, context.getTaskMonitor())
@@ -239,7 +239,7 @@ class GhidraAnalysisService(context: GhidraContext):
                     finally program.endTransaction(tx, true)
                   }
             }
-      }.fold(err => s"Function '$functionName' not found: $err", identity)
+      }).merge
     }.getOrElse("No program loaded")
 
   private def checkFullCommit(
@@ -539,7 +539,7 @@ class GhidraAnalysisService(context: GhidraContext):
     context.withProgram { program =>
       val tx = program.startTransaction("Set variable type")
       try
-        (for
+        prefixError("Setting variable type")(for
           addr <- parseAddress(program, functionAddress)
           func <- findFunctionByAddress(program, addr)
           hf   <- {
@@ -559,8 +559,7 @@ class GhidraAnalysisService(context: GhidraContext):
               sym, sym.getName, dt, SourceType.USER_DEFINED)
             Right(s"Variable type set successfully to ${dt.getName}")
           catch case e: Exception => Left(s"Failed to update variable: ${e.getMessage}")
-        yield msg)
-          .fold(err => s"No function at address: $err", identity)
+        yield msg).merge
       catch case e: Exception => s"Error setting variable type: ${e.getMessage}"
       finally program.endTransaction(tx, true)
     }.getOrElse("No program loaded")
@@ -608,7 +607,7 @@ class GhidraAnalysisService(context: GhidraContext):
               else s"Failed to apply function signature: ${cmd.getStatusMsg}"
         catch case e: Exception => s"Error setting function prototype: ${e.getMessage}"
         finally program.endTransaction(tx, success)
-      ).fold(err => s"Function not found at address: $err", identity)
+      ).fold(err => s"Setting function prototype failed: $err", identity)
     }.getOrElse("No program loaded")
 
   // Type Creation / Data Export
@@ -662,6 +661,9 @@ class GhidraAnalysisService(context: GhidraContext):
 
   // Private Helpers (Pure Functions)
   // =================================
+
+  private def prefixError[A](operation: String)(result: Either[String, A]): Either[String, A] =
+    result.left.map(err => s"$operation failed: $err")
 
   private def streamFunctions(program: Program): Iterator[Function] =
     program.getFunctionManager().getFunctions(true).iterator().asScala
