@@ -152,10 +152,19 @@ def kill_existing_ghidra_processes():
     
     return killed_count
 
-def wait_for_ghidra_server(max_wait_time=60):
-    """Wait for the Ghidra HTTP server to become available."""
+# The MCP server runs as a -postScript, so it only starts after Ghidra's full
+# auto-analysis completes. Large binaries can take several minutes, so allow
+# plenty of time (overridable via GHIDRA_MCP_STARTUP_TIMEOUT seconds).
+GHIDRA_STARTUP_TIMEOUT = int(os.environ.get("GHIDRA_MCP_STARTUP_TIMEOUT", "600"))
+
+def wait_for_ghidra_server(max_wait_time=GHIDRA_STARTUP_TIMEOUT, process=None):
+    """Wait for the Ghidra HTTP server to become available.
+
+    Returns early if the tracked process exits before the server comes up."""
     start_time = time.time()
     while time.time() - start_time < max_wait_time:
+        if process is not None and process.poll() is not None:
+            return False
         try:
             response = requests.get(urljoin(ghidra_server_url, "methods"), timeout=2)
             if response.ok:
@@ -282,8 +291,8 @@ def open_artifact_headless(artifact_path: str) -> str:
         current_ghidra_process = subprocess.Popen(shell_cmd, **popen_kwargs)
         
         # Wait for server to become available
-        logger.info(f"Waiting for Ghidra HTTP server to become available at {ghidra_server_url} (waiting up to 60s)...")
-        if wait_for_ghidra_server():
+        logger.info(f"Waiting for Ghidra HTTP server to become available at {ghidra_server_url} (waiting up to {GHIDRA_STARTUP_TIMEOUT}s)...")
+        if wait_for_ghidra_server(process=current_ghidra_process):
             return f"Successfully opened {artifact_path} in Ghidra headless mode at {ghidra_server_url} pid {current_ghidra_process.pid}"
         
         logger.error("Timed out waiting for Ghidra HTTP server to start")
