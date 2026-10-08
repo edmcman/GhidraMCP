@@ -29,16 +29,16 @@ class GhidraAnalysisService(context: GhidraContext):
         val existing = GhidraScriptUtil.findScriptByName(scriptName)
         if existing != null && existing.exists then
           prefixError("Running script")(
-            loadScript(existing).flatMap(executeScript(_, scriptName, deleteAfter = false))
+            loadScript(existing).flatMap(executeScript)
           ).merge
         else s"Error: Script not found: $scriptName"
       catch case e: Exception => s"Error locating existing script: ${e.getMessage}"
     else
-      prefixError("Running script")(for
-        scriptFile <- createScriptFile(scriptName, scriptSource)
-        script     <- loadScript(scriptFile)
-        output     <- executeScript(script, scriptName, deleteAfter = true)
-      yield output).merge
+      prefixError("Running script")(
+        createScriptFile(scriptName, scriptSource).flatMap { file =>
+          try loadScript(file).flatMap(executeScript)
+          finally cleanupScriptFile(file)
+        }).merge
 
   private def createScriptFile(scriptName: String, scriptSource: String): Either[String, ResourceFile] =
     try
@@ -71,20 +71,17 @@ class GhidraAnalysisService(context: GhidraContext):
       Left(s"Failed to load script after 3 attempts: $details")
     }
 
-  private def executeScript(script: GhidraScript, scriptName: String, deleteAfter: Boolean): Either[String, String] =
+  private def executeScript(script: GhidraScript): Either[String, String] =
     try
       val sw = new StringWriter()
       val pw = new PrintWriter(sw)
       script.execute(getState(), new ScriptControls(pw, pw, TaskMonitor.DUMMY))
       Right(sw.toString)
     catch case e: Exception => Left(s"Error running script: ${e.getMessage}")
-    finally
-      if deleteAfter then cleanupScriptFile(scriptName)
 
-  private def cleanupScriptFile(scriptName: String): Unit =
+  private def cleanupScriptFile(scriptFile: ResourceFile): Unit =
     try
-      val scriptFile = GhidraScriptUtil.findScriptByName(scriptName)
-      if scriptFile != null && scriptFile.exists then scriptFile.delete()
+      if scriptFile.exists then scriptFile.delete()
     catch case e: Exception =>
       Msg.error(this, s"Error cleaning up script file: ${e.getMessage}")
 
