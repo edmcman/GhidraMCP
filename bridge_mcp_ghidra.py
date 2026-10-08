@@ -25,6 +25,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# The Java server only responds once the work is done, so the read timeout must
+# cover slow operations (decompilation alone may take 30s, scripts much longer).
+REQUEST_TIMEOUT = (5, int(os.environ.get("GHIDRA_MCP_REQUEST_TIMEOUT", "300")))
+
 mcp = FastMCP("ghidra-mcp")
 
 # None until set via --default-ghidra-server, open_artifact_headless, or set_ghidra_server
@@ -95,7 +99,7 @@ def safe_get(endpoint: str, params: Optional[dict] = None) -> list:
     url = urljoin(ghidra_server_url, endpoint)
 
     try:
-        response = requests.get(url, params=params, timeout=5)
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
         response.encoding = 'utf-8'
         if response.ok:
             return response.text.splitlines()
@@ -110,9 +114,9 @@ def safe_post(endpoint: str, data: dict | str) -> str:
     try:
         url = urljoin(ghidra_server_url, endpoint)
         if isinstance(data, dict):
-            response = requests.post(url, data=data, timeout=5)
+            response = requests.post(url, data=data, timeout=REQUEST_TIMEOUT)
         else:
-            response = requests.post(url, data=data.encode("utf-8"), timeout=5)
+            response = requests.post(url, data=data.encode("utf-8"), timeout=REQUEST_TIMEOUT)
         response.encoding = 'utf-8'
         if response.ok:
             return response.text.strip()
@@ -127,7 +131,7 @@ def safe_get_json(endpoint: str) -> dict | None:
     if ghidra_server_url is None:
         return None
     try:
-        if (r := requests.get(urljoin(ghidra_server_url, endpoint), timeout=5)).ok:
+        if (r := requests.get(urljoin(ghidra_server_url, endpoint), timeout=REQUEST_TIMEOUT)).ok:
             r.encoding = 'utf-8'
             return r.json()
     except:
