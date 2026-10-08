@@ -51,7 +51,13 @@ class GhidraMCPServer(analysisService: GhidraAnalysisService, context: GhidraCon
     listEndpoint("/namespaces",     analysisService.listNamespaces)
     listEndpoint("/data",           analysisService.listDefinedData)
     listEndpoint("/list_functions", analysisService.listFunctions)
-    listEndpoint("/strings",        (o, l) => analysisService.getStrings(o, l))
+
+    s.createContext("/strings", exchange => {
+      val q = parseQueryParams(exchange)
+      val result = analysisService.getStrings(
+        parseInt(q.get("offset"), 0), parseInt(q.get("limit"), 100), q.get("filter").filter(_.nonEmpty))
+      sendResponse(exchange, result.fold(identity, _.mkString("\n")))
+    })
 
     s.createContext("/searchFunctions", exchange => {
       val q = parseQueryParams(exchange)

@@ -477,26 +477,18 @@ class GhidraAnalysisService(context: GhidraContext):
   // String Analysis
   // ===============
 
-  def getStrings(offset: Int, limit: Int): Either[String, List[String]] =
-    getStrings(offset, limit, None)
-
-  def getStrings(offset: Int, limit: Int, filter: String): Either[String, List[String]] =
-    getStrings(offset, limit, Option(filter))
-
-  private def getStrings(offset: Int, limit: Int, filter: Option[String]): Either[String, List[String]] =
+  def getStrings(offset: Int, limit: Int, filter: Option[String]): Either[String, List[String]] =
     context.withProgram { program =>
       try
-        val strings = program.getMemory().getBlocks().toList
-          .filter(_.isInitialized)
-          .flatMap { block =>
-            program.getListing().getDefinedData(block.getStart, true).iterator().asScala
-              .filter(_.hasStringValue)
-              .collect {
-                case data if filter.forall(f => data.getDefaultValueRepresentation().toLowerCase.contains(f.toLowerCase)) =>
-                  s"${data.getAddress}: ${escapeNonAscii(data.getDefaultValueRepresentation())}"
-              }
-          }
-        Right(strings.drop(offset).take(limit))
+        val matches = (s: String) => filter.forall(f => s.toLowerCase.contains(f.toLowerCase))
+        val strings = program.getListing().getDefinedData(program.getMemory().getAllInitializedAddressSet(), true)
+          .iterator().asScala
+          .filter(_.hasStringValue)
+          .map(data => data.getAddress -> data.getDefaultValueRepresentation())
+          .collect { case (addr, s) if matches(s) => s"$addr: ${escapeNonAscii(s)}" }
+          .slice(offset, offset + limit)
+          .toList
+        Right(strings)
       catch case e: Exception => Left(s"Error listing strings: ${e.getMessage}")
     }.getOrElse(Left("No program loaded"))
 
