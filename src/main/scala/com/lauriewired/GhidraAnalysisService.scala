@@ -561,11 +561,20 @@ class GhidraAnalysisService(context: GhidraContext):
       .toRight(s"Variable '$variableName' not found")
 
   private def resolveDataType(dtm: DataTypeManager, typeName: String): Either[String, DataType] =
-    val fromParser =
+    // Parse Ghidra type expressions (e.g. ushort[222]) before trying C declarations.
+    val fromTypeParser =
       try
-        val parser = new ghidra.app.util.cparser.C.CParser(dtm)
+        val parser = new ghidra.util.data.DataTypeParser(
+          dtm, dtm, null, ghidra.util.data.DataTypeParser.AllowedDataTypes.ALL)
         Option(parser.parse(typeName)).map(Right(_))
-      catch case _ => None
+      catch case _: InvalidDataTypeException => None
+    val fromParser =
+      fromTypeParser.orElse {
+        try
+          val parser = new ghidra.app.util.cparser.C.CParser(dtm)
+          Option(parser.parse(typeName)).map(Right(_))
+        catch case _ => None
+      }
     fromParser.getOrElse {
       Option(dtm.getDataType("/" + typeName)).map(Right(_)).getOrElse {
         dtm.getAllDataTypes.asScala

@@ -20,7 +20,10 @@ Run headless Ghidra analysis:
 $GHIDRA_INSTALL_DIR/support/analyzeHeadless /tmp/proj project_name -import /path/to/binary -postScript HeadlessMCPServerScript.java
 ```
 
-There are no automated tests in this project.
+Run the data item type regression checks after building (requires `GHIDRA_INSTALL_DIR`):
+```bash
+bash tests/run_data_item_types.sh
+```
 
 ## Architecture
 
