@@ -41,9 +41,14 @@ The new `open_artifact_headless` tool allows you to automatically start Ghidra h
 - Set the `GHIDRA_INSTALL_DIR` environment variable to point to your Ghidra installation directory
 
 ### Usage
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and run
+from this directory. `uv run --locked` installs the exact dependency versions
+and verifies package hashes from `uv.lock`; it fails if the project declarations
+and lockfile disagree.
+
 ```bash
 # Start the MCP bridge with headless tools enabled
-python bridge_mcp_ghidra.py --enable-headless-tools
+uv run --locked bridge_mcp_ghidra.py --enable-headless-tools
 
 # Then use the headless tools through your MCP client
 # open_artifact_headless will automatically:
@@ -51,6 +56,19 @@ python bridge_mcp_ghidra.py --enable-headless-tools
 # 2. Start analyzeHeadless in the background on a random available port
 # 3. Wait for the server to become available
 ```
+
+Run the bridge protocol test with:
+```bash
+uv run --locked python -m unittest discover -s tests -v
+```
+
+To update dependencies, edit `pyproject.toml`, run `uv lock --upgrade`, and
+regenerate the fully pinned, hashed pip export:
+```bash
+uv export --locked --no-dev --no-emit-project -o requirements.txt
+```
+Commit `pyproject.toml`, `uv.lock`, and `requirements.txt` together. For pip-only
+environments, use `python -m pip install --require-hashes -r requirements.txt`.
 
 # Features
 MCP Server + Ghidra Plugin

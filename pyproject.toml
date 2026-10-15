@@ -1,0 +1,12 @@
+[project]
+name = "ghidra-mcp-bridge"
+version = "1.0.0"
+description = "MCP bridge for Ghidra"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp==1.30.0",
+    "requests==2.32.3",
+]
+
+[tool.uv]
+package = false

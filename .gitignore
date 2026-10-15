@@ -51,6 +51,7 @@ mvnw.cmd
 !gradle/wrapper/gradle-wrapper.properties
 
 # Environment files
+.venv/
 .env
 .env.*
 

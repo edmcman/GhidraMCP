@@ -43,6 +43,7 @@ jobs:
         mkdir release
         cp dist/*_GhidraMCP.zip release/
         cp bridge_mcp_ghidra.py release/
+        cp pyproject.toml uv.lock requirements.txt release/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4

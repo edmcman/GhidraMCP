@@ -12,7 +12,7 @@ Or set `GHIDRA_INSTALL_DIR` env var and run `./gradlew install`. Omit `install` 
 
 Run the Python MCP bridge:
 ```bash
-python bridge_mcp_ghidra.py [--default-ghidra-server URL] [--transport stdio|sse] [--mcp-host HOST] [--mcp-port PORT] [--enable-headless-tools]
+uv run --locked bridge_mcp_ghidra.py [--default-ghidra-server URL] [--transport stdio|sse] [--mcp-host HOST] [--mcp-port PORT] [--enable-headless-tools]
 ```
 
 Run headless Ghidra analysis:
@@ -20,7 +20,14 @@ Run headless Ghidra analysis:
 $GHIDRA_INSTALL_DIR/support/analyzeHeadless /tmp/proj project_name -import /path/to/binary -postScript HeadlessMCPServerScript.java
 ```
 
-There are no automated tests in this project.
+Run the Python bridge protocol smoke test (no Ghidra installation required):
+```bash
+uv run --locked python -m unittest discover -s tests -v
+```
+
+Dependencies are declared in `pyproject.toml` and fully pinned in `uv.lock`.
+After changing dependencies, run `uv lock` and regenerate the pip-compatible
+export with `uv export --locked --no-dev --no-emit-project -o requirements.txt`.
 
 ## Architecture
 
