@@ -8,8 +8,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      GHIDRA_VERSION: 12.0.4
-      GHIDRA_DATE: 20260303
+      GHIDRA_VERSION: 12.1.4
+      GHIDRA_DATE: 20260921
 
     steps:
     - uses: actions/checkout@v4
@@ -43,6 +43,7 @@ jobs:
         mkdir release
         cp dist/*_GhidraMCP.zip release/
         cp bridge_mcp_ghidra.py release/
+        cp pyproject.toml uv.lock requirements.txt release/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
