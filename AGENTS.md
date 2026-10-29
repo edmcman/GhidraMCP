@@ -70,4 +70,4 @@ Ghidra APIs (Program, FunctionManager, DecompInterface, etc.)
 
 ## CI
 
-GitHub Actions (`.github/workflows/build.yml`): sets up JDK 21, downloads Ghidra 12.0.4, runs `./gradlew buildExtension`, assembles release ZIP with `bridge_mcp_ghidra.py`.
+GitHub Actions (`.github/workflows/build.yml`): sets up JDK 25, downloads Ghidra 12.2, runs `./gradlew buildExtension`, assembles release ZIP with `bridge_mcp_ghidra.py`.
