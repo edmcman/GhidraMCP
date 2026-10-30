@@ -57,27 +57,40 @@ class GhidraAnalysisService(context: GhidraContext):
       Left(s"Failed to create script file: ${e.getMessage}")
 
   private def loadScript(scriptFile: ResourceFile): Either[String, GhidraScript] =
-    val errors = Iterator.range(0, 3).map { attempt =>
+    def attemptLoad(attempt: Int, errors: List[String]): Either[String, GhidraScript] =
+      val output = new StringWriter()
+      val writer = new PrintWriter(output, true)
+      var provider: GhidraScriptProvider = null
       try
         if attempt > 0 then Thread.sleep(1000)
-        val provider = GhidraScriptUtil.getProvider(scriptFile)
-        Right(provider.getScriptInstance(scriptFile, new PrintWriter(System.err)))
+        provider = GhidraScriptUtil.getProvider(scriptFile)
+        Right(provider.getScriptInstance(scriptFile, writer))
       catch case e: Exception =>
         Msg.error(this, s"Script load attempt ${attempt + 1} failed: ${e.getMessage}")
-        Left(e.getMessage)
-    }.toList
-    errors.find(_.isRight).getOrElse {
-      val details = errors.collect { case Left(e) => e }.mkString("; ")
-      Left(s"Failed to load script after 3 attempts: $details")
-    }
+        writer.flush()
+        val detail = List(Option(e.getMessage).getOrElse(e.toString), output.toString.trim)
+          .filter(_.nonEmpty).mkString(": ")
+        val compilationFailed = provider match
+          case java: JavaScriptProvider =>
+            scala.util.Try(Option(java.getBundleForSource(scriptFile))
+              .exists(_.getErrors(scriptFile) != null)).getOrElse(false)
+          case _ => false
+        if compilationFailed then Left(s"Script compilation failed: $detail")
+        else if attempt == 2 then Left(s"Failed to load script after 3 attempts: ${(errors :+ detail).mkString("; ")}")
+        else attemptLoad(attempt + 1, errors :+ detail)
+    attemptLoad(0, Nil)
 
   private def executeScript(script: GhidraScript): Either[String, String] =
+    val sw = new StringWriter()
+    val pw = new PrintWriter(sw, true)
     try
-      val sw = new StringWriter()
-      val pw = new PrintWriter(sw)
       script.execute(getState(), new ScriptControls(pw, pw, TaskMonitor.DUMMY))
       Right(sw.toString)
-    catch case e: Exception => Left(s"Error running script: ${e.getMessage}")
+    catch case e: Exception =>
+      pw.flush()
+      val details = List(Option(e.getMessage).getOrElse(e.toString), sw.toString.trim)
+        .filter(_.nonEmpty).mkString("\n")
+      Left(s"Error running script: $details")
 
   private def cleanupScriptFile(scriptFile: ResourceFile): Unit =
     try
