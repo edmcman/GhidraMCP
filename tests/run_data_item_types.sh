@@ -11,7 +11,9 @@ classpath="$PWD/build/libs/GhidraMCP.jar"
 while IFS= read -r jar; do
     classpath="$classpath:$jar"
 done < <(rg --files "$GHIDRA_INSTALL_DIR/Ghidra" "$PWD/lib" -g '*.jar' | rg -v '/Extensions/')
-javac -proc:none -cp "$classpath" -d "$test_dir" tests/DataItemTypesTest.java
-XDG_CONFIG_HOME="$test_dir/config" XDG_CACHE_HOME="$test_dir/cache" \
-    java -Duser.home="$test_dir" -Djava.awt.headless=true -cp "$test_dir:$classpath" \
-    DataItemTypesTest "$GHIDRA_INSTALL_DIR"
+javac -proc:none -cp "$classpath" -d "$test_dir" tests/DataItemTypesTest.java tests/FunctionAddressTest.java
+for test in DataItemTypesTest FunctionAddressTest; do
+    XDG_CONFIG_HOME="$test_dir/config" XDG_CACHE_HOME="$test_dir/cache" \
+        java -Duser.home="$test_dir" -Djava.awt.headless=true -cp "$test_dir:$classpath" \
+        "$test" "$GHIDRA_INSTALL_DIR"
+done
