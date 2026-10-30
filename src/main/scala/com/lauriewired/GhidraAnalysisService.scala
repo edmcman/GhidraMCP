@@ -671,7 +671,7 @@ class GhidraAnalysisService(context: GhidraContext):
       .toRight(s"Function '$name' not found")
 
   private def findFunctionByAddress(program: Program, address: Address): Either[String, Function] =
-    Option(program.getFunctionManager().getFunctionAt(address))
+    Option(program.getFunctionManager().getFunctionContaining(address))
       .toRight(s"No function at address: $address")
 
   private def parseAddress(program: Program, addressStr: String): Either[String, Address] =

@@ -502,7 +502,7 @@ def rename_variable(function_name: str, old_name: str, new_name: str) -> str:
 @mcp.tool()
 def get_function_by_address(address: str) -> str:
     """
-    Get a function by its address.
+    Get the function containing the given address, including its entry point.
     """
     return "\n".join(safe_get("get_function_by_address", {"address": address}))
 
@@ -539,14 +539,14 @@ def list_functions(offset: int = 0, limit: int = 100) -> list:
 @mcp.tool()
 def decompile_function_by_address(address: str) -> str:
     """
-    Decompile a function at the given address.
+    Decompile the function containing the given address, including its entry point.
     """
     return "\n".join(safe_get("decompile_function", {"address": address}))
 
 @mcp.tool()
 def disassemble_function(address: str) -> list:
     """
-    Get assembly code (address: instruction; comment) for a function.
+    Get assembly code for the function containing the given address, including its entry point.
     """
     return safe_get("disassemble_function", {"address": address})
 
@@ -567,14 +567,14 @@ def set_disassembly_comment(address: str, comment: str) -> str:
 @mcp.tool()
 def rename_function_by_address(function_address: str, new_name: str) -> str:
     """
-    Rename a function by its address.
+    Rename the function containing the given address, including its entry point.
     """
     return safe_post("rename_function_by_address", {"function_address": function_address, "new_name": new_name})
 
 @mcp.tool()
 def set_function_prototype(function_address: str, prototype: str) -> str:
     """
-    Set a function's prototype.
+    Set the prototype of the function containing the given address, including its entry point.
     """
     return safe_post("set_function_prototype", {"function_address": function_address, "prototype": prototype})
 
@@ -584,7 +584,7 @@ def set_local_variable_type(function_address: str, variable_name: str, new_type:
     Set a local variable's type by its name.
 
     Args:
-        function_address: Target address in hex format (e.g. "0x1400010a0")
+        function_address: Address within the function in hex format (e.g. "0x1400010a0")
         variable_name: Name of variable to retype (e.g. "var_c")
         new_type: Name of new type (e.g. "Point")
     """
