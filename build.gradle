@@ -65,7 +65,7 @@ dependencies {
 
 // Exclude additional files from the built extension
 // Ex: buildExtension.exclude '.idea/**'
-buildExtension.exclude '.github'
+buildExtension.exclude '.github', '**/__pycache__/**', '**/*.pyc'
 
 // Install task to unzip the extension into Ghidra's Extensions directory
 task install {
